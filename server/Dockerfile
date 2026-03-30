@@ -1,22 +1,29 @@
-# Multi-stage build for Bun + Hono
+# Multi-stage build for Bun + Hono with pnpm monorepo
 FROM oven/bun:1-alpine AS builder
+
+# Install pnpm
+RUN apk add --no-cache nodejs npm && npm install -g pnpm@8
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files from root and server
-COPY package.json ./
-COPY server/package.json ./server/
-COPY packages/shared/package.json ./packages/shared/
+# Copy root package files and workspace config
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY .npmrc ./
 
-# Install dependencies
-RUN bun install --frozen-lockfile
+# Copy all workspace packages
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/ui/package.json ./packages/ui/
+COPY server/package.json ./server/
+
+# Install dependencies with frozen lockfile
+RUN pnpm install --frozen-lockfile
 
 # Copy source code
-COPY server ./server
 COPY packages/shared ./packages/shared
+COPY server ./server
 
-# Build the application
+# Build the server
 WORKDIR /app/server
 RUN bun run build
 
@@ -31,9 +38,11 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
 WORKDIR /app
 
-# Copy built application
+# Copy built application and dependencies
 COPY --from=builder --chown=nodejs:nodejs /app/server/dist ./dist
-COPY --from=builder --chown=nodejs:nodejs /app/server/package.json ./
+COPY --from=builder --chown=nodejs:nodejs /app/server/package.json ./package.json
+COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=nodejs:nodejs /app/packages/shared ./packages/shared
 
 # Switch to non-root user
 USER nodejs
