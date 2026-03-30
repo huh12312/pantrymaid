@@ -67,7 +67,7 @@ export const handlers = [
   }),
 
   http.post(`${API_BASE}/items`, async ({ request }) => {
-    const body = await request.json();
+    const body = (await request.json()) as Record<string, unknown>;
 
     return HttpResponse.json(
       {
@@ -87,7 +87,7 @@ export const handlers = [
 
   http.put(`${API_BASE}/items/:id`, async ({ params, request }) => {
     const { id } = params;
-    const body = await request.json();
+    const body = (await request.json()) as Record<string, unknown>;
 
     return HttpResponse.json({
       success: true,
@@ -238,9 +238,7 @@ export const handlers = [
   }),
 
   // Auth endpoints (Better Auth)
-  http.post(`${API_BASE}/auth/sign-in`, async ({ request }) => {
-    const body = await request.json();
-
+  http.post(`${API_BASE}/auth/sign-in`, async () => {
     return HttpResponse.json({
       success: true,
       data: {
