@@ -31,5 +31,13 @@
   "engines": {
     "node": ">=18.0.0",
     "pnpm": ">=8.0.0"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-select": "^2.2.6",
+    "@zxing/browser": "^0.1.5",
+    "better-auth": "^1.5.6",
+    "zustand": "^5.0.12"
   }
 }
