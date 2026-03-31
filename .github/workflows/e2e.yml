@@ -1,0 +1,97 @@
+name: E2E Tests
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pantrymaid
+          POSTGRES_PASSWORD: pantrymaid
+          POSTGRES_DB: pantrymaid
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://pantrymaid:pantrymaid@localhost:5432/pantrymaid
+      BETTER_AUTH_SECRET: ci-test-secret-not-for-production
+      NODE_ENV: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install chromium --with-deps
+
+      - name: Run DB migrations
+        run: bun run db:push
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://pantrymaid:pantrymaid@localhost:5432/pantrymaid
+
+      - name: Start API server
+        run: |
+          bun run src/index.ts &
+          echo "API_PID=$!" >> $GITHUB_ENV
+        working-directory: server
+        env:
+          DATABASE_URL: postgresql://pantrymaid:pantrymaid@localhost:5432/pantrymaid
+          BETTER_AUTH_SECRET: ci-test-secret-not-for-production
+          PORT: 3000
+          NODE_ENV: test
+
+      - name: Wait for API to be ready
+        run: |
+          for i in {1..30}; do
+            curl -sf http://localhost:3000/health && break
+            echo "Waiting for API... ($i/30)"
+            sleep 2
+          done
+
+      - name: Run Playwright E2E tests
+        run: pnpm exec playwright test
+        env:
+          CI: true
+          VITE_API_URL: http://localhost:3000
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
