@@ -1,10 +1,9 @@
-import { test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { registerAs } from "./helpers";
+import { TEST_USER } from "./fixtures";
 
 /**
  * E2E Tests: Barcode Scanning Flow
- *
- * These are skeleton tests that will be implemented once the barcode scanner UI exists.
- * Following TDD principles: tests are written first, implementation comes later.
  */
 
 test.describe("Barcode Scanning Flow", () => {
@@ -24,6 +23,23 @@ test.describe("Barcode Scanning Flow", () => {
   });
 
   test.describe("Barcode Scan", () => {
+    test("should open barcode scanner dialog", async ({ page }) => {
+      const uniqueUser = {
+        ...TEST_USER,
+        email: `barcode+${Date.now()}@pantrymaid.test`,
+      };
+
+      await registerAs(page, uniqueUser);
+
+      // Click the Scan button in header
+      await page.click('button:has-text("Scan")');
+
+      // Expect dialog/modal to be visible
+      await expect(
+        page.locator('[role="dialog"]').or(page.locator('text="Scan"').or(page.locator('text="Barcode"')))
+      ).toBeVisible({ timeout: 5000 });
+    });
+
     test.skip("should scan barcode and fetch product info", async ({ page }) => {
       // Navigate to barcode scanner
       // Mock barcode scan (UPC: 041220000000)

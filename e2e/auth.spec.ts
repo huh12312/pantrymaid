@@ -1,78 +1,80 @@
-import { test } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { loginAs, registerAs } from "./helpers";
+import { TEST_USER } from "./fixtures";
 
 /**
  * E2E Tests: Authentication Flow
- *
- * These are skeleton tests that will be implemented once the auth UI exists.
- * Following TDD principles: tests are written first, implementation comes later.
  */
 
 test.describe("Authentication Flow", () => {
   test.describe("Sign Up", () => {
-    test.skip("should sign up with email and create household", async ({ page }) => {
-      // Navigate to sign up page
-      // Fill in email
-      // Fill in password
-      // Fill in household name
-      // Submit form
-      // Expect to be redirected to dashboard
-      // Expect household to be created
-      // Expect user to be logged in
-    });
+    test("should sign up with email and password", async ({ page }) => {
+      // Use unique email to avoid conflicts
+      const uniqueUser = {
+        ...TEST_USER,
+        email: `tester+${Date.now()}@pantrymaid.test`,
+      };
 
-    test.skip("should validate email format", async ({ page }) => {
-      // Navigate to sign up page
-      // Enter invalid email
-      // Submit form
-      // Expect validation error
-    });
+      await registerAs(page, uniqueUser);
 
-    test.skip("should require password", async ({ page }) => {
-      // Navigate to sign up page
-      // Leave password empty
-      // Submit form
-      // Expect validation error
-    });
+      // Verify redirected to inventory page
+      await expect(page).toHaveURL(/\/inventory/);
 
-    test.skip("should require household name", async ({ page }) => {
-      // Navigate to sign up page
-      // Leave household name empty
-      // Submit form
-      // Expect validation error
+      // Verify welcome message is visible
+      await expect(page.locator("text=Welcome")).toBeVisible();
     });
   });
 
   test.describe("Sign In", () => {
-    test.skip("should sign in with existing credentials", async ({ page }) => {
-      // Navigate to sign in page
-      // Fill in email
-      // Fill in password
-      // Submit form
-      // Expect to be redirected to dashboard
-      // Expect to see user's items
+    test("should sign in with existing credentials", async ({ page, request }) => {
+      // Create user via API first
+      const uniqueUser = {
+        ...TEST_USER,
+        email: `signin+${Date.now()}@pantrymaid.test`,
+      };
+
+      const apiUrl = process.env.VITE_API_URL || "http://localhost:3000";
+      await request.post(`${apiUrl}/api/auth/register`, {
+        data: {
+          email: uniqueUser.email,
+          password: uniqueUser.password,
+          name: uniqueUser.name,
+        },
+      });
+
+      // Now login via UI
+      await loginAs(page, uniqueUser);
+
+      // Verify we're on the inventory page
+      await expect(page).toHaveURL(/\/inventory/);
     });
 
-    test.skip("should show error for invalid credentials", async ({ page }) => {
-      // Navigate to sign in page
-      // Fill in wrong email/password
-      // Submit form
-      // Expect error message
-    });
+    test("should show error for invalid credentials", async ({ page }) => {
+      await page.goto("/login");
+      await page.fill("#email", "invalid@example.com");
+      await page.fill("#password", "wrongpassword");
+      await page.click('button:has-text("Sign In")');
 
-    test.skip("should remember user session", async ({ page, context }) => {
-      // Sign in
-      // Close browser
-      // Reopen browser
-      // Expect to still be logged in
+      // Expect error message to be visible
+      await expect(page.locator("text=error").or(page.locator("text=failed").or(page.locator("text=invalid")))).toBeVisible({ timeout: 5000 });
     });
   });
 
   test.describe("Sign Out", () => {
-    test.skip("should sign out successfully", async ({ page }) => {
-      // Sign in first
-      // Click sign out button
-      // Expect to be redirected to sign in page
-      // Expect session to be cleared
+    test("should sign out successfully", async ({ page }) => {
+      // Create and login user
+      const uniqueUser = {
+        ...TEST_USER,
+        email: `signout+${Date.now()}@pantrymaid.test`,
+      };
+
+      await registerAs(page, uniqueUser);
+
+      // Click logout button (LogOut icon button in header)
+      await page.click('button:has([class*="lucide-log-out"])');
+
+      // Expect to be redirected to login page
+      await expect(page).toHaveURL(/\/login/);
     });
   });
 });
