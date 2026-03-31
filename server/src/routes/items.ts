@@ -45,7 +45,7 @@ items.post(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expirationDate: data.expirationDate instanceof Date
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          ? (data.expirationDate as Date).toISOString().split('T')[0]
+          ? data.expirationDate.toISOString().split('T')[0]
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           : data.expirationDate,
         householdId: user.householdId,
@@ -217,7 +217,7 @@ items.put(
         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expirationDate: updates.expirationDate instanceof Date
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          ? (updates.expirationDate as Date).toISOString().split('T')[0]
+          ? updates.expirationDate.toISOString().split('T')[0]
           // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
           : updates.expirationDate,
         updatedAt: new Date(),
