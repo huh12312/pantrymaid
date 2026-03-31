@@ -6,9 +6,12 @@
     "target": "ESNext",
     "moduleResolution": "bundler",
     "types": ["bun-types"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
     "paths": {
       "@pantrymaid/shared": ["../packages/shared/src"]
     }
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/test", "src/db/seed.ts"]
 }
