@@ -11,13 +11,17 @@ const households = new Hono();
 households.use("*", authMiddleware);
 
 /**
- * Generate a random invite code
+ * Generate a cryptographically secure random invite code
+ * Uses Node.js crypto.randomBytes for unpredictability
  */
 function generateInviteCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // No ambiguous chars
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+
   let code = "";
   for (let i = 0; i < 8; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += chars[bytes[i]! % chars.length];
   }
   return code;
 }

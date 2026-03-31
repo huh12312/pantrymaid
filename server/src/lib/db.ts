@@ -12,6 +12,10 @@ const client = postgres(connectionString, {
   max: 10,
   idle_timeout: 20,
   connect_timeout: 10,
+  // Enable SSL/TLS in production for encrypted database connections
+  ssl: process.env.NODE_ENV === 'production'
+    ? { rejectUnauthorized: true }
+    : false,
 });
 
 // Create drizzle instance
