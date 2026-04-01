@@ -57,16 +57,26 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install chromium --with-deps
 
+      - name: Verify Postgres connection
+        run: |
+          echo "Waiting for Postgres to be fully ready..."
+          sleep 5
+          PGPASSWORD=pantrymaid psql -h localhost -U pantrymaid -d pantrymaid -c "SELECT version();"
+        env:
+          PGPASSWORD: pantrymaid
+
       - name: Run DB migrations
         run: bun run db:push
         working-directory: server
         env:
           DATABASE_URL: postgresql://pantrymaid:pantrymaid@localhost:5432/pantrymaid
+          PGPASSWORD: pantrymaid
 
       - name: Start API server
         run: |
-          bun run src/index.ts &
+          nohup bun run src/index.ts > /tmp/api.log 2>&1 &
           echo "API_PID=$!" >> $GITHUB_ENV
+          echo "API server started with PID $!"
         working-directory: server
         env:
           DATABASE_URL: postgresql://pantrymaid:pantrymaid@localhost:5432/pantrymaid
@@ -81,11 +91,21 @@ jobs:
 
       - name: Wait for API to be ready
         run: |
+          echo "Waiting for API server to start..."
           for i in {1..30}; do
-            curl -sf http://localhost:3000/health && break
+            if curl -sf http://localhost:3000/health; then
+              echo "API server is ready!"
+              break
+            fi
             echo "Waiting for API... ($i/30)"
             sleep 2
           done
+          # If API is not ready after 60 seconds, show logs and fail
+          if ! curl -sf http://localhost:3000/health; then
+            echo "API server failed to start. Logs:"
+            cat /tmp/api.log || echo "No logs found"
+            exit 1
+          fi
 
       - name: Run Playwright E2E tests
         run: pnpm exec playwright test
@@ -99,4 +119,12 @@ jobs:
         with:
           name: playwright-report
           path: playwright-report/
+          retention-days: 7
+
+      - name: Upload API logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-logs
+          path: /tmp/api.log
           retention-days: 7
