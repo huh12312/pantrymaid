@@ -14,6 +14,34 @@ export async function loginAs(page: Page, user: User) {
   await page.fill("#email", user.email);
   await page.fill("#password", user.password);
   await page.click('button:has-text("Sign In")');
+
+  // Debug logging before waitForURL
+  console.log("After Sign In click - Current URL:", page.url());
+  await page.waitForLoadState("networkidle");
+
+  const pageTitle = await page.title();
+  console.log("Page title:", pageTitle);
+
+  // Check for console errors
+  const consoleErrors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      consoleErrors.push(msg.text());
+    }
+  });
+
+  // Check for page errors
+  const errors = await page.evaluate(() => {
+    return (window as any).__errors || [];
+  });
+
+  if (errors.length) {
+    console.log("Page errors:", errors);
+  }
+  if (consoleErrors.length) {
+    console.log("Console errors:", consoleErrors);
+  }
+
   await page.waitForURL("/inventory");
 }
 
@@ -28,5 +56,33 @@ export async function registerAs(page: Page, user: User) {
   await page.fill("#email", user.email);
   await page.fill("#password", user.password);
   await page.click('button:has-text("Sign Up")');
+
+  // Debug logging before waitForURL
+  console.log("After Sign Up click - Current URL:", page.url());
+  await page.waitForLoadState("networkidle");
+
+  const pageTitle = await page.title();
+  console.log("Page title:", pageTitle);
+
+  // Check for console errors
+  const consoleErrors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") {
+      consoleErrors.push(msg.text());
+    }
+  });
+
+  // Check for page errors
+  const errors = await page.evaluate(() => {
+    return (window as any).__errors || [];
+  });
+
+  if (errors.length) {
+    console.log("Page errors:", errors);
+  }
+  if (consoleErrors.length) {
+    console.log("Console errors:", consoleErrors);
+  }
+
   await page.waitForURL("/inventory");
 }
