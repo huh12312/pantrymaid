@@ -48,8 +48,6 @@ async function fetchApi<T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const token = localStorage.getItem("auth_token");
-
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
   };
@@ -60,10 +58,6 @@ async function fetchApi<T>(
         headers[key] = value;
       }
     });
-  }
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
   }
 
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
@@ -83,13 +77,13 @@ async function fetchApi<T>(
 export const api = {
   // Auth
   login: (email: string, password: string) =>
-    fetchApi<{ user: User; token: string }>("/api/auth/sign-in/email", {
+    fetchApi<{ user: User }>("/api/auth/sign-in/email", {
       method: "POST",
       body: JSON.stringify({ email, password }),
     }),
 
   register: (email: string, password: string, name: string) =>
-    fetchApi<{ user: User; token: string }>("/api/auth/sign-up/email", {
+    fetchApi<{ user: User }>("/api/auth/sign-up/email", {
       method: "POST",
       body: JSON.stringify({ email, password, name }),
     }),
@@ -150,15 +144,8 @@ export const api = {
     const formData = new FormData();
     formData.append("receipt", file);
 
-    const token = localStorage.getItem("auth_token");
-    const headers: Record<string, string> = {};
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
     const response = await fetch(`${API_BASE_URL}/api/receipt`, {
       method: "POST",
-      headers,
       body: formData,
       credentials: "include",
     });

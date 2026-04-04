@@ -22,7 +22,7 @@ export default function LoginPage() {
   const loginMutation = useMutation({
     mutationFn: () => api.login(formData.email, formData.password),
     onSuccess: (data) => {
-      setAuth(data.user, data.token);
+      setAuth(data.user);
       navigate("/inventory");
     },
   });
@@ -30,7 +30,7 @@ export default function LoginPage() {
   const registerMutation = useMutation({
     mutationFn: () => api.register(formData.email, formData.password, formData.name),
     onSuccess: (data) => {
-      setAuth(data.user, data.token);
+      setAuth(data.user);
       navigate("/inventory");
     },
   });
