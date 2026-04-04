@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+// Use relative paths - proxied by Vite dev server to avoid CORS and cross-origin cookie issues
+const API_BASE_URL = "";
 
 export interface InventoryItem {
   id: string;
