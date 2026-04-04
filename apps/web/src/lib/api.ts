@@ -95,50 +95,68 @@ export const api = {
     }),
 
   // Household
-  createHousehold: (name: string) =>
-    fetchApi<Household>("/api/households", {
+  createHousehold: async (name: string) => {
+    const response = await fetchApi<{ success: boolean; data: Household }>("/api/households", {
       method: "POST",
       body: JSON.stringify({ name }),
-    }),
+    });
+    return response.data;
+  },
 
   // TODO: Server needs a POST /api/households/join endpoint that accepts just inviteCode
   // Current server API requires household ID in URL which user doesn't have
-  joinHousehold: (inviteCode: string) =>
-    fetchApi<Household>("/api/households/join", {
+  joinHousehold: async (inviteCode: string) => {
+    const response = await fetchApi<{ success: boolean; data: Household }>("/api/households/join", {
       method: "POST",
       body: JSON.stringify({ inviteCode }),
-    }),
-
-  getHousehold: (householdId: string) => fetchApi<Household>(`/api/households/${householdId}`),
-
-  // Inventory
-  getItems: (location?: string) => {
-    const query = location ? `?location=${location}` : "";
-    return fetchApi<InventoryItem[]>(`/api/items${query}`);
+    });
+    return response.data;
   },
 
-  getItem: (id: string) => fetchApi<InventoryItem>(`/api/items/${id}`),
+  getHousehold: async (householdId: string) => {
+    const response = await fetchApi<{ success: boolean; data: Household }>(`/api/households/${householdId}`);
+    return response.data;
+  },
 
-  createItem: (data: CreateItemDto) =>
-    fetchApi<InventoryItem>("/api/items", {
+  // Inventory
+  getItems: async (location?: string) => {
+    const query = location ? `?location=${location}` : "";
+    const response = await fetchApi<{ success: boolean; data: { items: InventoryItem[] } }>(`/api/items${query}`);
+    return response.data.items;
+  },
+
+  getItem: async (id: string) => {
+    const response = await fetchApi<{ success: boolean; data: InventoryItem }>(`/api/items/${id}`);
+    return response.data;
+  },
+
+  createItem: async (data: CreateItemDto) => {
+    const response = await fetchApi<{ success: boolean; data: InventoryItem }>("/api/items", {
       method: "POST",
       body: JSON.stringify(data),
-    }),
+    });
+    return response.data;
+  },
 
-  updateItem: (id: string, data: UpdateItemDto) =>
-    fetchApi<InventoryItem>(`/api/items/${id}`, {
+  updateItem: async (id: string, data: UpdateItemDto) => {
+    const response = await fetchApi<{ success: boolean; data: InventoryItem }>(`/api/items/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
-    }),
+    });
+    return response.data;
+  },
 
-  deleteItem: (id: string) =>
-    fetchApi<void>(`/api/items/${id}`, {
+  deleteItem: async (id: string) => {
+    await fetchApi<{ success: boolean; data: null }>(`/api/items/${id}`, {
       method: "DELETE",
-    }),
+    });
+  },
 
   // Barcode lookup
-  lookupBarcode: (barcode: string) =>
-    fetchApi<{ name: string; category?: string }>(`/api/barcode/${barcode}`),
+  lookupBarcode: async (barcode: string) => {
+    const response = await fetchApi<{ success: boolean; data: { name: string; category?: string } }>(`/api/barcode/${barcode}`);
+    return response.data;
+  },
 
   // Receipt upload
   uploadReceipt: async (file: File) => {
