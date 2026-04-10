@@ -5,6 +5,7 @@
     "module": "ESNext",
     "target": "ESNext",
     "moduleResolution": "bundler",
+    "outDir": "./dist",
     "types": ["bun-types"],
     "noUnusedLocals": false,
     "noUnusedParameters": false,

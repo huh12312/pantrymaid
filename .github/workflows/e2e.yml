@@ -107,32 +107,6 @@ jobs:
             exit 1
           fi
 
-      - name: Check web server startup capability
-        run: |
-          echo "Testing if Vite dev server can start..."
-          cd apps/web
-          # Start server in background with timeout
-          timeout 30s pnpm dev > /tmp/vite-test.log 2>&1 &
-          VITE_PID=$!
-          echo "Vite started with PID $VITE_PID"
-
-          # Wait for server to respond
-          for i in {1..10}; do
-            if curl -sf http://localhost:5173/ > /dev/null 2>&1; then
-              echo "Vite dev server is responding!"
-              kill $VITE_PID 2>/dev/null || true
-              exit 0
-            fi
-            echo "Waiting for Vite... ($i/10)"
-            sleep 1
-          done
-
-          # Failed to start
-          echo "Vite dev server failed to respond. Logs:"
-          cat /tmp/vite-test.log || echo "No logs found"
-          kill $VITE_PID 2>/dev/null || true
-          exit 1
-
       - name: Run Playwright E2E tests
         run: pnpm exec playwright test
         env:

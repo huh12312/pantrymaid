@@ -34,7 +34,7 @@ test.describe("Authentication Flow", () => {
       };
 
       const apiUrl = process.env.VITE_API_URL || "http://localhost:3000";
-      await request.post(`${apiUrl}/api/auth/register`, {
+      await request.post(`${apiUrl}/api/auth/sign-up/email`, {
         data: {
           email: uniqueUser.email,
           password: uniqueUser.password,

@@ -189,4 +189,112 @@ households.post(
   }
 );
 
+/**
+ * GET /households/me - Get the authenticated user's household
+ */
+households.get("/me", async (c) => {
+  try {
+    const user = getUser(c);
+
+    if (!user.householdId) {
+      return c.json(
+        {
+          success: false,
+          error: "User does not belong to a household",
+        },
+        404
+      );
+    }
+
+    const [household] = await db.select().from(householdsTable)
+      .where(eq(householdsTable.id, user.householdId));
+
+    if (!household) {
+      return c.json({ success: false, error: "Household not found" }, 404);
+    }
+
+    const members = await db.select({
+      id: users.id,
+      displayName: users.displayName,
+      createdAt: users.createdAt,
+    }).from(users)
+      .where(eq(users.householdId, user.householdId));
+
+    return c.json({
+      success: true,
+      data: {
+        ...household,
+        members,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching user's household:", error);
+    return c.json(
+      {
+        success: false,
+        error: "Failed to fetch household",
+      },
+      500
+    );
+  }
+});
+
+/**
+ * POST /households/join - Join a household using only an invite code
+ */
+households.post(
+  "/join",
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+  zValidator("json", z.object({
+    inviteCode: z.string().min(8).max(8),
+  })),
+  async (c) => {
+    try {
+      const user = getUser(c);
+      const { inviteCode } = c.req.valid("json");
+
+      if (user.householdId) {
+        return c.json(
+          {
+            success: false,
+            error: "User already belongs to a household",
+          },
+          400
+        );
+      }
+
+      // Look up household by invite code alone
+      const [household] = await db.select().from(householdsTable)
+        .where(eq(householdsTable.inviteCode, inviteCode));
+
+      if (!household) {
+        return c.json({ success: false, error: "Invalid invite code" }, 400);
+      }
+
+      await db.insert(users).values({
+        id: user.id,
+        householdId: household.id,
+        displayName: user.email,
+      }).onConflictDoUpdate({
+        target: users.id,
+        set: { householdId: household.id },
+      });
+
+      return c.json({
+        success: true,
+        data: household,
+      });
+    } catch (error) {
+      console.error("Error joining household via invite code:", error);
+      return c.json(
+        {
+          success: false,
+          error: "Failed to join household",
+        },
+        500
+      );
+    }
+  }
+);
+
 export default households;

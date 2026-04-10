@@ -30,8 +30,8 @@ app.use(
     origin: (origin) => {
       // Allow requests with no origin (mobile apps, curl, etc.)
       if (!origin) return "*";
-      // Check if origin is in allowed list
-      return allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+      // Reject unlisted origins
+      return allowedOrigins.includes(origin) ? origin : null;
     },
     credentials: true,
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],

@@ -24,6 +24,7 @@ export default function InventoryPage() {
   const [receiptUploadOpen, setReceiptUploadOpen] = useState(false);
   const [editItem, setEditItem] = useState<InventoryItem | null>(null);
   const [defaultLocation, setDefaultLocation] = useState<LocationType | undefined>();
+  const [scannedProduct, setScannedProduct] = useState<{ name: string; category?: string; barcode: string } | null>(null);
 
   const { data: items = [], isLoading } = useQuery({
     queryKey: queryKeys.inventory.list(),
@@ -78,24 +79,24 @@ export default function InventoryPage() {
     } else {
       createMutation.mutate(data);
     }
+    setScannedProduct(null);
   };
 
   const handleBarcodeScan = (barcode: string) => {
     void (async () => {
       try {
         const result = await api.lookupBarcode(barcode);
-        setEditItem({
-          id: "",
+        // Use null editItem so the dialog routes to createMutation, not updateMutation.
+        // Pre-fill via defaultLocation + open dialog; pass scanned data as default values.
+        setEditItem(null);
+        setDefaultLocation("pantry");
+        setScannerOpen(false);
+        // Store scanned product for AddItemDialog to use as initial values
+        setScannedProduct({
           name: result.name,
-          quantity: 1,
-          unit: "pieces",
-          location: "pantry",
           category: result.category,
           barcode,
-          householdId: "",
-          createdAt: "",
-          updatedAt: "",
-        } as InventoryItem);
+        });
         setAddDialogOpen(true);
       } catch (error) {
         console.error("Barcode lookup failed:", error);
@@ -218,10 +219,14 @@ export default function InventoryPage() {
 
       <AddItemDialog
         open={addDialogOpen}
-        onOpenChange={setAddDialogOpen}
+        onOpenChange={(open) => {
+          setAddDialogOpen(open);
+          if (!open) setScannedProduct(null);
+        }}
         onSubmit={handleSubmit}
         editItem={editItem}
         defaultLocation={defaultLocation}
+        scannedProduct={scannedProduct}
       />
 
       <BarcodeScanner

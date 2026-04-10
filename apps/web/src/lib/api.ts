@@ -158,22 +158,22 @@ export const api = {
     return response.data;
   },
 
-  // Receipt upload
+  // Receipt upload — converts File to base64, sends JSON as server expects
   uploadReceipt: async (file: File) => {
-    const formData = new FormData();
-    formData.append("receipt", file);
-
-    const response = await fetch(`${API_BASE_URL}/api/receipt`, {
-      method: "POST",
-      body: formData,
-      credentials: "include",
+    const imageBase64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result as string;
+        // Strip the data URL prefix (e.g. "data:image/jpeg;base64,")
+        resolve(result.split(",")[1] ?? result);
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
     });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: "Upload failed" })) as { message?: string };
-      throw new Error(error.message ?? `HTTP ${response.status}`);
-    }
-
-    return response.json() as Promise<unknown>;
+    return fetchApi<unknown>("/api/receipt", {
+      method: "POST",
+      body: JSON.stringify({ imageBase64 }),
+    });
   },
 };

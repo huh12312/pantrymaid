@@ -18,12 +18,19 @@ import {
 } from "@/components/ui/select";
 import type { InventoryItem, CreateItemDto } from "@/lib/api";
 
+interface ScannedProduct {
+  name: string;
+  category?: string;
+  barcode: string;
+}
+
 interface AddItemDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (data: CreateItemDto) => void;
   editItem?: InventoryItem | null;
   defaultLocation?: "pantry" | "fridge" | "freezer";
+  scannedProduct?: ScannedProduct | null;
 }
 
 export function AddItemDialog({
@@ -32,6 +39,7 @@ export function AddItemDialog({
   onSubmit,
   editItem,
   defaultLocation,
+  scannedProduct,
 }: AddItemDialogProps) {
   const [formData, setFormData] = useState<CreateItemDto>({
     name: "",
@@ -52,6 +60,15 @@ export function AddItemDialog({
         barcode: editItem.barcode,
         notes: editItem.notes,
       });
+    } else if (scannedProduct) {
+      setFormData({
+        name: scannedProduct.name,
+        quantity: 1,
+        unit: "pieces",
+        location: defaultLocation || "pantry",
+        category: scannedProduct.category,
+        barcode: scannedProduct.barcode,
+      });
     } else {
       setFormData({
         name: "",
@@ -60,7 +77,7 @@ export function AddItemDialog({
         location: defaultLocation || "pantry",
       });
     }
-  }, [editItem, open, defaultLocation]);
+  }, [editItem, scannedProduct, open, defaultLocation]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -4,7 +4,7 @@ import { createItemSchema, updateItemSchema, itemLocationSchema } from "@pantrym
 import { authMiddleware, getUser } from "../middleware/auth";
 import { db } from "../lib/db";
 import { items as itemsTable } from "../db/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
 import { z } from "zod";
 
 const items = new Hono();
@@ -112,7 +112,7 @@ items.get(
         .offset((page - 1) * pageSize);
 
       // Get total count
-      const [countResult] = await db.select({ count: itemsTable.id }).from(itemsTable)
+      const [countResult] = await db.select({ count: count() }).from(itemsTable)
         .where(and(...conditions));
       const total = countResult ? Number(countResult.count) : 0;
 
