@@ -61,7 +61,7 @@ app.get("/health", (c) => {
 });
 
 // Better Auth routes (public) - with detailed error logging
-app.on(["POST", "GET"], "/api/auth/**", async (c) => {
+app.on(["POST", "GET"], "/api/auth/*", async (c) => {
   try {
     const request = c.req.raw;
     const url = new URL(request.url);
