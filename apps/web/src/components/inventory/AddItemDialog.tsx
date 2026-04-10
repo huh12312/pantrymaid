@@ -22,6 +22,7 @@ interface ScannedProduct {
   name: string;
   brand?: string;
   category?: string;
+  imageUrl?: string;
   barcode: string;
 }
 
@@ -70,6 +71,7 @@ export function AddItemDialog({
         unit: "pieces",
         location: defaultLocation || "pantry",
         category: scannedProduct.category,
+        imageUrl: scannedProduct.imageUrl,
         barcode: scannedProduct.barcode,
       });
     } else {
