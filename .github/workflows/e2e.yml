@@ -81,6 +81,7 @@ jobs:
         env:
           DATABASE_URL: postgresql://pantrymaid:pantrymaid@localhost:5432/pantrymaid
           BETTER_AUTH_SECRET: ci-test-secret-not-for-production
+          BETTER_AUTH_URL: http://localhost:3000
           PORT: 3000
           NODE_ENV: test
           VERYFI_CLIENT_ID: ${{ secrets.VERYFI_CLIENT_ID }}

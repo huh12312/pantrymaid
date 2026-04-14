@@ -29,9 +29,9 @@ test.describe("Inventory Management", () => {
 
     await registerAs(page, uniqueUser);
 
-    // Find the Pantry card and click its + button
-    const pantryCard = page.locator('div:has(h3:text("Pantry"))').first();
-    await pantryCard.locator('button:has([class*="lucide-plus"])').click();
+    // Find the Pantry section and click its + button
+    const pantrySection = page.getByTestId('section-pantry');
+    await pantrySection.locator('button:has([class*="lucide-plus"])').click();
 
     // Wait for dialog to open
     await expect(page.locator('text="Add New Item"')).toBeVisible();
@@ -55,9 +55,9 @@ test.describe("Inventory Management", () => {
 
     await registerAs(page, uniqueUser);
 
-    // Find the Fridge card and click its + button
-    const fridgeCard = page.locator('div:has(h3:text("Fridge"))').first();
-    await fridgeCard.locator('button:has([class*="lucide-plus"])').click();
+    // Find the Fridge section and click its + button
+    const fridgeSection = page.getByTestId('section-fridge');
+    await fridgeSection.locator('button:has([class*="lucide-plus"])').click();
 
     // Wait for dialog to open
     await expect(page.locator('text="Add New Item"')).toBeVisible();
@@ -83,8 +83,8 @@ test.describe("Inventory Management", () => {
     await registerAs(page, uniqueUser);
 
     // Add an item first
-    const pantryCard = page.locator('div:has(h3:text("Pantry"))').first();
-    await pantryCard.locator('button:has([class*="lucide-plus"])').click();
+    const pantrySection = page.getByTestId('section-pantry');
+    await pantrySection.locator('button:has([class*="lucide-plus"])').click();
     await expect(page.locator('text="Add New Item"')).toBeVisible();
     await page.fill("#name", "Item to Delete");
     await page.fill("#quantity", "1");
