@@ -65,7 +65,7 @@ test.describe("Inventory Management", () => {
     // Fill in the form with expiry date
     await page.fill("#name", ITEMS.withExpiry.name);
     await page.fill("#quantity", ITEMS.withExpiry.quantity.toString());
-    await page.fill("#expiryDate", ITEMS.withExpiry.expiryDate || "");
+    await page.fill("#expirationDate", ITEMS.withExpiry.expiryDate || "");
 
     // Submit the form
     await page.click('button:has-text("Add Item")');

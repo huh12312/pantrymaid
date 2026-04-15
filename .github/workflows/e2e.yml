@@ -29,7 +29,13 @@ jobs:
     env:
       DATABASE_URL: postgresql://pantrymaid:pantrymaid@localhost:5432/pantrymaid
       BETTER_AUTH_SECRET: ci-test-secret-not-for-production
+      BETTER_AUTH_URL: http://localhost:3000
       NODE_ENV: test
+      VERYFI_CLIENT_ID: ${{ secrets.VERYFI_CLIENT_ID }}
+      VERYFI_CLIENT_SECRET: ${{ secrets.VERYFI_CLIENT_SECRET }}
+      VERYFI_USERNAME: ${{ secrets.VERYFI_USERNAME }}
+      VERYFI_API_KEY: ${{ secrets.VERYFI_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
     steps:
       - name: Checkout code
@@ -72,42 +78,6 @@ jobs:
           DATABASE_URL: postgresql://pantrymaid:pantrymaid@localhost:5432/pantrymaid
           PGPASSWORD: pantrymaid
 
-      - name: Start API server
-        run: |
-          nohup bun run src/index.ts > /tmp/api.log 2>&1 &
-          echo "API_PID=$!" >> $GITHUB_ENV
-          echo "API server started with PID $!"
-        working-directory: server
-        env:
-          DATABASE_URL: postgresql://pantrymaid:pantrymaid@localhost:5432/pantrymaid
-          BETTER_AUTH_SECRET: ci-test-secret-not-for-production
-          BETTER_AUTH_URL: http://localhost:3000
-          PORT: 3000
-          NODE_ENV: test
-          VERYFI_CLIENT_ID: ${{ secrets.VERYFI_CLIENT_ID }}
-          VERYFI_CLIENT_SECRET: ${{ secrets.VERYFI_CLIENT_SECRET }}
-          VERYFI_USERNAME: ${{ secrets.VERYFI_USERNAME }}
-          VERYFI_API_KEY: ${{ secrets.VERYFI_API_KEY }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-      - name: Wait for API to be ready
-        run: |
-          echo "Waiting for API server to start..."
-          for i in {1..30}; do
-            if curl -sf http://localhost:3000/health; then
-              echo "API server is ready!"
-              break
-            fi
-            echo "Waiting for API... ($i/30)"
-            sleep 2
-          done
-          # If API is not ready after 60 seconds, show logs and fail
-          if ! curl -sf http://localhost:3000/health; then
-            echo "API server failed to start. Logs:"
-            cat /tmp/api.log || echo "No logs found"
-            exit 1
-          fi
-
       - name: Run Playwright E2E tests
         run: pnpm exec playwright test
         env:
@@ -122,10 +92,3 @@ jobs:
           path: playwright-report/
           retention-days: 7
 
-      - name: Upload API logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: api-logs
-          path: /tmp/api.log
-          retention-days: 7
