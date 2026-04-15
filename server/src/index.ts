@@ -39,11 +39,11 @@ app.use(
   })
 );
 
-// Rate limiting on auth routes (5 req/min in production, relaxed in test)
+// Rate limiting on auth routes (strict in production only)
 app.use(
   "/api/auth/*",
   rateLimitMiddleware({
-    limit: process.env.NODE_ENV === "test" ? 100 : 5,
+    limit: process.env.NODE_ENV === "production" ? 5 : 100,
     windowMs: 60 * 1000, // 1 minute
   })
 );
