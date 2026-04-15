@@ -61,7 +61,8 @@ items.post(
 
       return c.json({
         success: true,
-        data: serializeItem(item),
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        data: serializeItem(item!),
       }, 201);
     } catch (error) {
       console.error("Error creating item:", error);

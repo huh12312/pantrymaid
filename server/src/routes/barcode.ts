@@ -66,7 +66,7 @@ barcode.get("/:upc", async (c) => {
       expiration: expirationEstimate?.days
         ? {
             days: expirationEstimate.days,
-            label: expirationEstimate.label!,
+            label: expirationEstimate.label,
             confidence: expirationEstimate.confidence as
               | "high"
               | "medium"
