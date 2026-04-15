@@ -19,10 +19,8 @@ test.describe("Receipt Upload Flow", () => {
       // Click the Receipt button in header
       await page.click('button:has-text("Receipt")');
 
-      // Expect dialog/modal to be visible (check for common dialog indicators)
-      await expect(
-        page.locator('[role="dialog"]').or(page.locator('text="Upload"').or(page.locator('text="Receipt"')))
-      ).toBeVisible({ timeout: 5000 });
+      // Expect dialog/modal to be visible
+      await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5000 });
     });
 
     test("should upload a receipt image", async ({ page }) => {
