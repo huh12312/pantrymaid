@@ -10,12 +10,12 @@ interface ItemCardProps {
 }
 
 export function ItemCard({ item, onEdit, onDelete }: ItemCardProps) {
-  const isExpiringSoon = item.expiryDate
-    ? new Date(item.expiryDate) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+  const isExpiringSoon = item.expirationDate
+    ? new Date(item.expirationDate) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
     : false;
 
-  const isExpired = item.expiryDate
-    ? new Date(item.expiryDate) < new Date()
+  const isExpired = item.expirationDate
+    ? new Date(item.expirationDate) < new Date()
     : false;
 
   return (
@@ -98,7 +98,7 @@ export function ItemCard({ item, onEdit, onDelete }: ItemCardProps) {
           </div>
 
           {/* Expiry date */}
-          {item.expiryDate && (
+          {item.expirationDate && (
             <div className="flex items-center gap-1 mt-1.5">
               <Calendar className="h-3 w-3 flex-shrink-0" />
               <span
@@ -112,7 +112,7 @@ export function ItemCard({ item, onEdit, onDelete }: ItemCardProps) {
                 )}
               >
                 {isExpired ? "Expired " : isExpiringSoon ? "Expires " : ""}
-                {new Date(item.expiryDate).toLocaleDateString()}
+                {new Date(item.expirationDate).toLocaleDateString()}
               </span>
             </div>
           )}

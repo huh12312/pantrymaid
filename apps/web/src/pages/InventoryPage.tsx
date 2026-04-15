@@ -225,13 +225,13 @@ export default function InventoryPage() {
   const freezerItems = items.filter((item) => item.location === "freezer");
 
   const expiringCount = items.filter((item) => {
-    if (!item.expiryDate) return false;
-    const d = new Date(item.expiryDate);
+    if (!item.expirationDate) return false;
+    const d = new Date(item.expirationDate);
     return d > new Date() && d <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   }).length;
 
   const expiredCount = items.filter((item) =>
-    item.expiryDate ? new Date(item.expiryDate) < new Date() : false,
+    item.expirationDate ? new Date(item.expirationDate) < new Date() : false,
   ).length;
 
   const filterItems = (itemsToFilter: InventoryItem[]) => {

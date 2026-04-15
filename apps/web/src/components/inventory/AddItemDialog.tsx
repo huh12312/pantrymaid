@@ -77,8 +77,8 @@ export function AddItemDialog({
         unit: editItem.unit,
         location: editItem.location,
         category: editItem.category,
-        expiryDate: editItem.expiryDate,
-        barcode: editItem.barcode,
+        expirationDate: editItem.expirationDate,
+        barcodeUpc: editItem.barcodeUpc,
         notes: editItem.notes,
       });
     } else if (scannedProduct) {
@@ -90,7 +90,7 @@ export function AddItemDialog({
         location: defaultLocation || "pantry",
         category: scannedProduct.category,
         imageUrl: scannedProduct.imageUrl,
-        barcode: scannedProduct.barcode,
+        barcodeUpc: scannedProduct.barcode,
       });
     } else {
       setFormData({
@@ -229,13 +229,13 @@ export function AddItemDialog({
             </div>
 
             <div>
-              <Label htmlFor="expiryDate">Expiry Date</Label>
+              <Label htmlFor="expirationDate">Expiry Date</Label>
               <Input
-                id="expiryDate"
+                id="expirationDate"
                 type="date"
-                value={formData.expiryDate || ""}
+                value={formData.expirationDate || ""}
                 onChange={(e) =>
-                  setFormData({ ...formData, expiryDate: e.target.value })
+                  setFormData({ ...formData, expirationDate: e.target.value })
                 }
               />
             </div>

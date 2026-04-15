@@ -9,8 +9,8 @@ export interface InventoryItem {
   unit: string;
   location: "pantry" | "fridge" | "freezer";
   category?: string;
-  expiryDate?: string;
-  barcode?: string;
+  expirationDate?: string;
+  barcodeUpc?: string;
   imageUrl?: string;
   notes?: string;
   householdId: string;
@@ -25,8 +25,8 @@ export interface CreateItemDto {
   unit: string;
   location: "pantry" | "fridge" | "freezer";
   category?: string;
-  expiryDate?: string;
-  barcode?: string;
+  expirationDate?: string;
+  barcodeUpc?: string;
   imageUrl?: string;
   notes?: string;
 }
@@ -142,7 +142,7 @@ export const api = {
 
   updateItem: async (id: string, data: UpdateItemDto) => {
     const response = await fetchApi<{ success: boolean; data: InventoryItem }>(`/api/items/${id}`, {
-      method: "PATCH",
+      method: "PUT",
       body: JSON.stringify(data),
     });
     return response.data;
