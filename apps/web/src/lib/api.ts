@@ -105,8 +105,6 @@ export const api = {
     return response.data;
   },
 
-  // TODO: Server needs a POST /api/households/join endpoint that accepts just inviteCode
-  // Current server API requires household ID in URL which user doesn't have
   joinHousehold: async (inviteCode: string) => {
     const response = await fetchApi<{ success: boolean; data: Household }>("/api/households/join", {
       method: "POST",
@@ -115,8 +113,8 @@ export const api = {
     return response.data;
   },
 
-  getHousehold: async (householdId: string) => {
-    const response = await fetchApi<{ success: boolean; data: Household }>(`/api/households/${householdId}`);
+  getHousehold: async () => {
+    const response = await fetchApi<{ success: boolean; data: Household }>("/api/households/me");
     return response.data;
   },
 
