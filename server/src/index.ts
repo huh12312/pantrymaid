@@ -66,23 +66,12 @@ app.on(["POST", "GET"], "/api/auth/*", async (c) => {
     const request = c.req.raw;
     const url = new URL(request.url);
 
-    console.log("Better Auth request:", {
-      method: request.method,
-      path: url.pathname,
-      origin: request.headers.get("origin"),
-      referer: request.headers.get("referer"),
-      host: request.headers.get("host"),
-      userAgent: request.headers.get("user-agent"),
-    });
+    console.log(`Auth: ${request.method} ${url.pathname}`);
 
     // Call Better Auth handler
     const response = await auth.handler(request);
 
-    console.log("Better Auth response:", {
-      status: response.status,
-      statusText: response.statusText,
-      headers: Object.fromEntries(response.headers),
-    });
+    console.log(`Auth response: ${response.status}`);
 
     // After successful sign-up, create a household for the new user
     if (url.pathname === "/api/auth/sign-up/email" && request.method === "POST" && response.status === 200) {
@@ -105,12 +94,7 @@ app.on(["POST", "GET"], "/api/auth/*", async (c) => {
   } catch (error) {
     console.error("Better Auth handler error:", error);
     console.error("Error stack:", error instanceof Error ? error.stack : "No stack");
-    console.error("Request details:", {
-      method: c.req.method,
-      path: c.req.path,
-      url: c.req.url,
-      headers: Object.fromEntries(c.req.raw.headers),
-    });
+    console.error("Request details:", { method: c.req.method, path: c.req.path });
     return c.json({ success: false, error: error instanceof Error ? error.message : "Unknown error" }, 500);
   }
 });
