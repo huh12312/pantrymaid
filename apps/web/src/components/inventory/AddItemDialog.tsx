@@ -17,22 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { InventoryItem, CreateItemDto } from "@/lib/api";
-
-const FOOD_CATEGORIES = [
-  "Dairy",
-  "Meat & Poultry",
-  "Seafood",
-  "Produce",
-  "Bread & Bakery",
-  "Grains & Pasta",
-  "Canned Goods",
-  "Condiments & Sauces",
-  "Snacks",
-  "Beverages",
-  "Frozen Foods",
-  "Spices & Seasonings",
-  "Other",
-] as const;
+import { FOOD_CATEGORIES } from "@pantrymaid/shared/constants";
 
 interface ScannedProduct {
   name: string;
