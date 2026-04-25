@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { items as itemsTable } from "../db/schema";
 import { eq } from "drizzle-orm";
+import { inferCategoryFromName } from "./openfoodfacts";
 
 /**
  * Normalized food name → Wikipedia article title.
@@ -206,10 +207,13 @@ async function fetchWikipediaImage(articleTitle: string): Promise<string | null>
   }
 }
 
-async function patchItemImage(itemId: string, imageUrl: string): Promise<void> {
+async function patchItem(
+  itemId: string,
+  fields: { imageUrl?: string; category?: string },
+): Promise<void> {
   await db
     .update(itemsTable)
-    .set({ imageUrl, updatedAt: new Date() })
+    .set({ ...fields, updatedAt: new Date() })
     .where(eq(itemsTable.id, itemId));
 }
 
@@ -260,37 +264,51 @@ async function fetchPexelsImage(query: string): Promise<string | null> {
 }
 
 /**
- * Resolves an image URL for a newly created item and writes it back to the DB.
+ * Resolves an image URL and infers a category for a newly created item,
+ * writing both back to the DB in a single update.
  * Designed to be called fire-and-forget after item creation returns to the client.
  *
- * Fallback chain:
+ * Image fallback chain:
  *   1. Skip if imageUrl already set (barcode scan with OFF image)
  *   2. Seed map → Wikipedia PageImages API (CC-licensed only)
  *   3. Pexels stock photo search by normalized item name
- *   4. Give up — frontend shows Package icon fallback
+ *
+ * Category inference:
+ *   - Skipped if category already set
+ *   - Keyword match against CATEGORY_PATTERNS from openfoodfacts.ts
  */
 export async function resolveImageForItem(
   itemId: string,
   name: string,
   _barcodeUpc: string | null,
   existingImageUrl: string | null,
+  existingCategory: string | null,
 ): Promise<void> {
-  if (existingImageUrl) return;
+  const patch: { imageUrl?: string; category?: string } = {};
 
-  // Step 2: Wikipedia via seed map
-  const articleTitle = lookupSeedMap(name);
-  const wikiUrl = articleTitle ? await fetchWikipediaImage(articleTitle) : null;
-  if (wikiUrl) {
-    await patchItemImage(itemId, wikiUrl);
-    return;
+  // Infer category if not already set
+  if (!existingCategory) {
+    const inferred = inferCategoryFromName(name);
+    if (inferred) patch.category = inferred;
   }
 
-  // Step 3: Pexels fallback
-  const query = pexelsQuery(name);
-  if (query) {
-    const pexelsUrl = await fetchPexelsImage(query);
-    if (pexelsUrl) {
-      await patchItemImage(itemId, pexelsUrl);
+  // Resolve image if not already set
+  if (!existingImageUrl) {
+    const articleTitle = lookupSeedMap(name);
+    const wikiUrl = articleTitle ? await fetchWikipediaImage(articleTitle) : null;
+
+    if (wikiUrl) {
+      patch.imageUrl = wikiUrl;
+    } else {
+      const query = pexelsQuery(name);
+      if (query) {
+        const pexelsUrl = await fetchPexelsImage(query);
+        if (pexelsUrl) patch.imageUrl = pexelsUrl;
+      }
     }
+  }
+
+  if (Object.keys(patch).length > 0) {
+    await patchItem(itemId, patch);
   }
 }

@@ -69,6 +69,7 @@ items.post(
         created.name,
         created.barcodeUpc ?? null,
         created.imageUrl ?? null,
+        created.category ?? null,
       ).catch((err) => console.error("Image resolve failed for item", created.id, err));
 
       return c.json({
