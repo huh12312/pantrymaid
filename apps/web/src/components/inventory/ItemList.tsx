@@ -1,4 +1,6 @@
-import { ShoppingCart } from "lucide-react";
+import { useState } from "react";
+import { ShoppingCart, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { ItemCard } from "./ItemCard";
 import type { InventoryItem } from "@/lib/api";
 import { FOOD_CATEGORIES } from "@pantrymaid/shared/constants";
@@ -48,21 +50,47 @@ export function ItemList({ items, onEdit, onDelete }: ItemListProps) {
   }
 
   const groups = sortAndGroup(items);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+
+  function toggle(category: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(category) ? next.delete(category) : next.add(category);
+      return next;
+    });
+  }
 
   return (
-    <div className="space-y-4">
-      {groups.map(({ category, items: groupItems }) => (
-        <div key={category}>
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 mb-1.5 px-1">
-            {category}
-          </p>
-          <div className="space-y-2">
-            {groupItems.map((item) => (
-              <ItemCard key={item.id} item={item} onEdit={onEdit} onDelete={onDelete} />
-            ))}
+    <div className="space-y-3">
+      {groups.map(({ category, items: groupItems }) => {
+        const isCollapsed = collapsed.has(category);
+        return (
+          <div key={category}>
+            <button
+              onClick={() => toggle(category)}
+              className="w-full flex items-center justify-between px-1 mb-1.5 group"
+            >
+              <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/60 group-hover:text-muted-foreground transition-colors">
+                {category}
+                <span className="ml-1.5 text-muted-foreground/40">{groupItems.length}</span>
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-3 w-3 text-muted-foreground/40 group-hover:text-muted-foreground transition-all duration-200",
+                  isCollapsed && "-rotate-90",
+                )}
+              />
+            </button>
+            {!isCollapsed && (
+              <div className="space-y-2">
+                {groupItems.map((item) => (
+                  <ItemCard key={item.id} item={item} onEdit={onEdit} onDelete={onDelete} />
+                ))}
+              </div>
+            )}
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

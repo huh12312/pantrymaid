@@ -2,6 +2,7 @@ import { db } from "./db";
 import { items as itemsTable } from "../db/schema";
 import { eq } from "drizzle-orm";
 import { inferCategoryFromName } from "./openfoodfacts";
+import { normalizeItemName } from "./openai";
 
 /**
  * Normalized food name → Wikipedia article title.
@@ -294,17 +295,29 @@ export async function resolveImageForItem(
 
   // Resolve image if not already set
   if (!existingImageUrl) {
-    const articleTitle = lookupSeedMap(name);
-    const wikiUrl = articleTitle ? await fetchWikipediaImage(articleTitle) : null;
+    // Step 1: seed map on raw name → Wikipedia
+    const rawTitle = lookupSeedMap(name);
+    const wikiUrl = rawTitle ? await fetchWikipediaImage(rawTitle) : null;
 
     if (wikiUrl) {
       patch.imageUrl = wikiUrl;
     } else {
-      const query = pexelsQuery(name);
-      if (query) {
-        const pexelsUrl = await fetchPexelsImage(query);
-        if (pexelsUrl) patch.imageUrl = pexelsUrl;
+      // Step 2: LLM normalization → retry seed map → Wikipedia
+      const normalized = await normalizeItemName(name);
+      let resolvedUrl: string | null = null;
+
+      if (normalized !== name) {
+        const normalizedTitle = lookupSeedMap(normalized);
+        resolvedUrl = normalizedTitle ? await fetchWikipediaImage(normalizedTitle) : null;
       }
+
+      // Step 3: Pexels with best available query
+      if (!resolvedUrl) {
+        const query = pexelsQuery(normalized !== name ? normalized : name);
+        if (query) resolvedUrl = await fetchPexelsImage(query);
+      }
+
+      if (resolvedUrl) patch.imageUrl = resolvedUrl;
     }
   }
 
