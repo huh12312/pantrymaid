@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { createItemSchema, updateItemSchema, itemLocationSchema } from "@pantrymaid/shared/schemas";
+import type { CreateItemInput, UpdateItemInput } from "@pantrymaid/shared/schemas";
 import { authMiddleware, getUser } from "../middleware/auth";
 import { db } from "../lib/db";
 import { items as itemsTable } from "../db/schema";
@@ -23,13 +24,11 @@ items.use("*", authMiddleware);
  */
 items.post(
   "/",
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   zValidator("json", createItemSchema),
   async (c) => {
     try {
       const user = getUser(c);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const data = c.req.valid("json");
+      const data = c.req.valid("json") as CreateItemInput;
 
       if (!user.householdId) {
         return c.json(
@@ -41,29 +40,29 @@ items.post(
         );
       }
 
-      // Create item in database
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      const insertData = {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-        ...data,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const insertData: typeof itemsTable.$inferInsert = {
+        name: data.name,
+        brand: data.brand,
+        category: data.category,
+        location: data.location,
         quantity: String(data.quantity),
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+        unit: data.unit,
+        barcodeUpc: data.barcodeUpc,
+        imageUrl: data.imageUrl,
         expirationDate: data.expirationDate instanceof Date
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          ? data.expirationDate.toISOString().split('T')[0]
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          : data.expirationDate,
+          ? data.expirationDate.toISOString().split("T")[0]
+          : (data.expirationDate ?? null),
+        expirationEstimated: data.expirationEstimated ?? false,
+        notes: data.notes,
         householdId: user.householdId,
         addedBy: user.id,
       };
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      const [item] = await db.insert(itemsTable).values(insertData as never).returning();
+      const [created] = await db.insert(itemsTable).values(insertData).returning();
 
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const created = item!;
+      if (!created) {
+        return c.json({ success: false, error: "Failed to create item" }, 500);
+      }
 
-      // Fire-and-forget: resolve image asynchronously after response is sent
       void resolveImageForItem(
         created.id,
         created.name,
@@ -94,7 +93,6 @@ items.post(
  */
 items.get(
   "/",
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   zValidator("query", z.object({
     location: itemLocationSchema.optional(),
     page: z.coerce.number().int().positive().default(1),
@@ -206,14 +204,12 @@ items.get("/:id", async (c) => {
  */
 items.put(
   "/:id",
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   zValidator("json", updateItemSchema),
   async (c) => {
     try {
       const user = getUser(c);
       const itemId = c.req.param("id");
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const updates = c.req.valid("json");
+      const updates = c.req.valid("json") as UpdateItemInput;
 
       if (!user.householdId) {
         return c.json(
@@ -225,24 +221,16 @@ items.put(
         );
       }
 
-      // IDOR prevention: WHERE id = itemId AND householdId = user.householdId
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access
-      const updateData = {
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const updateData: Partial<typeof itemsTable.$inferInsert> & { updatedAt: Date } = {
         ...updates,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         quantity: updates.quantity !== undefined ? String(updates.quantity) : undefined,
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
         expirationDate: updates.expirationDate instanceof Date
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-          ? updates.expirationDate.toISOString().split('T')[0]
-          // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+          ? updates.expirationDate.toISOString().split("T")[0]
           : updates.expirationDate,
         updatedAt: new Date(),
       };
       const [item] = await db.update(itemsTable)
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-        .set(updateData as never)
+        .set(updateData)
         .where(and(
           eq(itemsTable.id, itemId),
           eq(itemsTable.householdId, user.householdId)

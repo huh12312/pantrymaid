@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { createHouseholdSchema } from "@pantrymaid/shared/schemas";
+import type { CreateHouseholdInput } from "@pantrymaid/shared/schemas";
 import { authMiddleware, getUser } from "../middleware/auth";
 import { db } from "../lib/db";
 import { households as householdsTable, users } from "../db/schema";
@@ -18,13 +19,11 @@ households.use("*", authMiddleware);
  */
 households.post(
   "/",
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   zValidator("json", createHouseholdSchema),
   async (c) => {
     try {
       const user = getUser(c);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const data = c.req.valid("json");
+      const data = c.req.valid("json") as CreateHouseholdInput;
 
       // Check if user already has a household
       if (user.householdId) {
@@ -40,7 +39,6 @@ households.post(
       const inviteCode = generateInviteCode();
 
       const [household] = await db.insert(householdsTable).values({
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
         name: data.name,
         inviteCode,
       }).returning();
@@ -127,7 +125,6 @@ households.get("/me", async (c) => {
  */
 households.post(
   "/join",
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-call
   zValidator("json", z.object({
     inviteCode: z.string().min(8).max(8),
   })),
