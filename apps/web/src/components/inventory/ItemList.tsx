@@ -11,7 +11,7 @@ interface ItemListProps {
   onDelete: (id: string) => void;
 }
 
-const CATEGORY_ORDER = new Map(FOOD_CATEGORIES.map((cat, i) => [cat, i]));
+const CATEGORY_ORDER = new Map<string, number>(FOOD_CATEGORIES.map((cat, i) => [cat, i]));
 
 function sortAndGroup(items: InventoryItem[]): Array<{ category: string; items: InventoryItem[] }> {
   const sorted = [...items].sort((a, b) => {
