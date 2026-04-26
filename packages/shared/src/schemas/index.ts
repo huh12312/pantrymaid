@@ -36,7 +36,21 @@ export const createItemSchema = z.object({
   notes: z.string().optional(),
 });
 
-export const updateItemSchema = createItemSchema.partial();
+// Defined explicitly without defaults so a PUT with missing fields
+// doesn't silently overwrite existing values with schema defaults (Zod 4 behaviour change).
+export const updateItemSchema = z.object({
+  name: z.string().min(1, "Name is required").optional(),
+  brand: z.string().optional(),
+  category: z.string().optional(),
+  location: itemLocationSchema.optional(),
+  quantity: z.coerce.number().positive().optional(),
+  unit: z.string().optional(),
+  barcodeUpc: z.string().optional(),
+  imageUrl: z.string().optional(),
+  expirationDate: z.coerce.date().nullable().optional(),
+  expirationEstimated: z.boolean().optional(),
+  notes: z.string().optional(),
+});
 
 // Household schemas
 export const householdSchema = z.object({
