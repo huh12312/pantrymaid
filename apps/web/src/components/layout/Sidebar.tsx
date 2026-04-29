@@ -7,6 +7,8 @@ import {
   LogOut,
   ChevronsLeft,
   ChevronsRight,
+  Copy,
+  Check,
 } from "lucide-react";
 import { RadarLogo } from "./RadarLogo";
 
@@ -21,6 +23,7 @@ export interface SidebarProps {
   pantryCount: number;
   fridgeCount: number;
   freezerCount: number;
+  inviteCode?: string;
 }
 
 interface NavItem {
@@ -43,7 +46,9 @@ export function Sidebar({
   pantryCount,
   fridgeCount,
   freezerCount,
+  inviteCode,
 }: SidebarProps) {
+  const [copied, setCopied] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) === "true";
@@ -68,6 +73,14 @@ export function Sidebar({
   ];
 
   const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : "?";
+
+  function handleCopy() {
+    if (!inviteCode) return;
+    void navigator.clipboard.writeText(inviteCode).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
 
   return (
     <div
@@ -180,6 +193,35 @@ export function Sidebar({
               >
                 {expiredCount}
               </span>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Invite code */}
+      {!collapsed && inviteCode && (
+        <>
+          <div className="border-t border-sidebar-border mx-4 my-4" />
+          <div className="px-4">
+            <p className="text-[10px] font-semibold tracking-widest text-sidebar-muted uppercase mb-2">
+              Invite Code
+            </p>
+            <div className="flex items-center justify-between gap-2 bg-white/5 rounded-xl px-3 py-2">
+              <span className="font-mono text-sm font-semibold tracking-widest text-sidebar-foreground">
+                {inviteCode}
+              </span>
+              <button
+                onClick={handleCopy}
+                className="text-sidebar-muted hover:text-sidebar-foreground transition-colors shrink-0"
+                aria-label="Copy invite code"
+                title="Copy to clipboard"
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-emerald-400" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+              </button>
             </div>
           </div>
         </>

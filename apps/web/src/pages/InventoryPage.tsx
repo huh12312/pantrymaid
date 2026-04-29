@@ -127,6 +127,12 @@ export default function InventoryPage() {
     queryFn: () => api.getItems(),
   });
 
+  const { data: household } = useQuery({
+    queryKey: queryKeys.household.details(),
+    queryFn: () => api.getHousehold(),
+    retry: false,
+  });
+
   const createMutation = useMutation({
     mutationFn: (data: CreateItemDto) => api.createItem(data),
     onSuccess: () => {
@@ -260,6 +266,7 @@ export default function InventoryPage() {
         pantryCount={pantryItems.length}
         fridgeCount={fridgeItems.length}
         freezerCount={freezerItems.length}
+        inviteCode={household?.inviteCode}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden">
