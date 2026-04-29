@@ -60,18 +60,13 @@ app.get("/health", (c) => {
   });
 });
 
-// Better Auth routes (public) - with detailed error logging
+// Better Auth routes (public)
 app.on(["POST", "GET"], "/api/auth/*", async (c) => {
   try {
     const request = c.req.raw;
     const url = new URL(request.url);
 
-    console.log(`Auth: ${request.method} ${url.pathname}`);
-
-    // Call Better Auth handler
     const response = await auth.handler(request);
-
-    console.log(`Auth response: ${response.status}`);
 
     // After successful sign-up, create a household for the new user
     if (url.pathname === "/api/auth/sign-up/email" && request.method === "POST" && response.status === 200) {

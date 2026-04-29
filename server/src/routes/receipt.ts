@@ -174,7 +174,6 @@ receipt.post(
         storeName,
         lineItems: enhancedItems,
         total: veryfiResult.total,
-        requiresConfirmation: true,
       };
 
       return c.json({

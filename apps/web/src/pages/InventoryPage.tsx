@@ -24,6 +24,13 @@ import { useNavigate } from "react-router-dom";
 
 type LocationType = "pantry" | "fridge" | "freezer";
 
+const colorMap = {
+  violet: "bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400",
+  blue: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
+  cyan: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400",
+  amber: "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400",
+};
+
 function StatCard({
   icon: Icon,
   label,
@@ -37,12 +44,6 @@ function StatCard({
   sub: string;
   color: "violet" | "blue" | "cyan" | "amber";
 }) {
-  const colorMap = {
-    violet: "bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400",
-    blue: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
-    cyan: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400",
-    amber: "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400",
-  };
 
   return (
     <div className="bg-card rounded-2xl border p-4">
@@ -77,12 +78,6 @@ function LocationSection({
   onEdit: (item: InventoryItem) => void;
   onDelete: (id: string) => void;
 }) {
-  const colorMap = {
-    violet: "bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400",
-    blue: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
-    cyan: "bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600 dark:text-cyan-400",
-  };
-
   return (
     <div data-testid={`section-${title.toLowerCase()}`}>
       <div className="flex items-center justify-between mb-4">
