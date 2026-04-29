@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { ChefHat } from "lucide-react";
+import { RadarLogo } from "@/components/layout/RadarLogo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,9 +58,9 @@ export default function LoginPage() {
           {/* Logo */}
           <div className="flex items-center justify-center gap-2 mb-8">
             <div className="p-2 bg-primary/10 rounded-xl">
-              <ChefHat className="h-6 w-6 text-primary" />
+              <RadarLogo className="h-6 w-6 text-primary" />
             </div>
-            <span className="text-xl font-bold tracking-tight">PantryMaid</span>
+            <span className="text-xl font-bold tracking-tight">PantryRadar</span>
           </div>
 
           {/* Heading */}
@@ -69,7 +69,7 @@ export default function LoginPage() {
               {isRegister ? "Create account" : "Welcome back"}
             </h1>
             <p className="text-sm text-muted-foreground mt-1">
-              {isRegister ? "Get started with PantryMaid" : "Sign in to your household"}
+              {isRegister ? "Get started with PantryRadar" : "Sign in to your household"}
             </p>
           </div>
 

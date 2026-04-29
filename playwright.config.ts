@@ -6,7 +6,7 @@ import path from "path";
 config({ path: path.resolve(__dirname, ".env") });
 
 /**
- * Playwright E2E Test Configuration for PantryMaid Web App
+ * Playwright E2E Test Configuration for PantryRadar Web App
  * See https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({

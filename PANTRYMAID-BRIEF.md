@@ -1,4 +1,4 @@
-# PantryMaid — Master Build Brief
+# PantryRadar — Master Build Brief
 
 ## What We're Building
 A multi-user household inventory app for pantry, fridge, and freezer. Users can add items via barcode scan or receipt photo. Modern feel. Works offline for existing inventory.
@@ -6,9 +6,9 @@ A multi-user household inventory app for pantry, fridge, and freezer. Users can 
 ---
 
 ## Identity
-- **App Name:** PantryMaid
+- **App Name:** PantryRadar
 - **Bundle ID:** `com.pantrymaid`
-- **GitHub Repo:** https://github.com/huh12312/pantrymaid (private)
+- **GitHub Repo:** https://github.com/huh12312/pantryradar (private)
 
 ---
 
@@ -314,7 +314,7 @@ Web:
 - `.env.example` with all vars documented (values as placeholders)
 - `.gitignore` (ensure `.env` is ignored, never secrets in repo)
 - ESLint + Prettier setup
-- Initial commit + push to `https://github.com/huh12312/pantrymaid`
+- Initial commit + push to `https://github.com/huh12312/pantryradar`
 
 **Agent 2 — 🗄️ Database** (after Agent 1)
 - Drizzle ORM schema (`server/src/db/schema.ts`)

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PantryMaid is a household inventory management app. It is a **Turborepo + pnpm monorepo** with:
+PantryRadar is a household inventory management app. It is a **Turborepo + pnpm monorepo** with:
 - `apps/web` — React + Vite web frontend
 - `apps/mobile` — Expo (React Native) mobile app
 - `server/` — Hono + Bun API backend

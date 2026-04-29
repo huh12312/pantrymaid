@@ -1,4 +1,4 @@
-# PantryMaid
+# PantryRadar
 
 A multi-user household inventory app for pantry, fridge, and freezer management. Track your food items, scan barcodes, process receipts, and never let food expire again.
 
@@ -58,7 +58,7 @@ pantrymaid/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/huh12312/pantrymaid.git
+   git clone https://github.com/huh12312/pantryradar.git
    cd pantrymaid
    ```
 

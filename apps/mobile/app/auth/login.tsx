@@ -57,7 +57,7 @@ export default function LoginScreen() {
           <View className="w-full max-w-md">
             <View className="mb-8">
               <Text className="text-3xl font-bold text-gray-900 text-center mb-2">
-                Welcome to PantryMaid
+                Welcome to PantryRadar
               </Text>
               <Text className="text-gray-600 text-center">
                 Sign in to manage your household inventory
