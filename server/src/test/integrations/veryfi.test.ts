@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/require-await, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/await-thenable */
+ 
 import { describe, test, expect, beforeEach, mock } from "bun:test";
 import { VeryfiClient, VeryfiError } from "../../lib/veryfi";
 

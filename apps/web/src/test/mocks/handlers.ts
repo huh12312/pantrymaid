@@ -1,6 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
-/* eslint-disable @typescript-eslint/require-await */
-/* eslint-disable @typescript-eslint/no-unused-vars */
+ 
+ 
+ 
 import { http, HttpResponse } from "msw";
 
 const API_BASE = "http://localhost:3000";

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/require-await */
+ 
 import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
 import { OpenFoodFactsClient } from "../../lib/openfoodfacts";
 import { db } from "../../lib/db";
