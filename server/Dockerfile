@@ -8,7 +8,7 @@ RUN apk add --no-cache nodejs npm && npm install -g pnpm@8
 WORKDIR /app
 
 # Copy root package files and workspace config
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
 COPY .npmrc ./
 
 # Copy all workspace packages
