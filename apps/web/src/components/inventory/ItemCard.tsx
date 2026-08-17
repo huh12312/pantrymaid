@@ -4,6 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Edit, Trash2, Calendar, Minus, PackageOpen, ChevronDown, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ProductImage } from "@/components/ui/ProductImage";
+import { parseLocalDate } from "@/lib/dates";
 import type { InventoryItem } from "@/lib/api";
 
 interface ItemCardProps {
@@ -27,13 +28,9 @@ export function ItemCard({
   isExpanded,
   onToggleExpand,
 }: ItemCardProps) {
-  // Parse date-only strings ("YYYY-MM-DD") as local midnight to avoid UTC-offset rollback.
-  // Full ISO timestamps already have timezone info and are left as-is.
-  const expiryDate = item.expirationDate
-    ? new Date(
-        item.expirationDate.includes("T") ? item.expirationDate : item.expirationDate + "T00:00:00"
-      )
-    : null;
+  // Parse date-only strings ("YYYY-MM-DD") at local midnight, and tolerate a
+  // T-suffixed ISO timestamp too — see parseLocalDate for why both matter.
+  const expiryDate = item.expirationDate ? parseLocalDate(item.expirationDate) : null;
 
   const isExpiringSoon = expiryDate
     ? expiryDate <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
@@ -47,21 +44,13 @@ export function ItemCard({
       onOpenChange={onToggleExpand}
       className={cn(
         "relative overflow-hidden rounded-xl border bg-card transition-all duration-200 hover:shadow-md hover:-translate-y-0.5",
-        isExpired
-          ? "border-expired/40"
-          : isExpiringSoon
-            ? "border-warning/40"
-            : "border-border"
+        isExpired ? "border-expired/40" : isExpiringSoon ? "border-warning/40" : "border-border"
       )}
     >
       <div
         className={cn(
           "absolute left-0 top-0 bottom-0 w-1 rounded-l-xl",
-          isExpired
-            ? "bg-expired-accent"
-            : isExpiringSoon
-              ? "bg-warning-accent"
-              : "bg-fresh-accent"
+          isExpired ? "bg-expired-accent" : isExpiringSoon ? "bg-warning-accent" : "bg-fresh-accent"
         )}
       />
 
@@ -106,7 +95,7 @@ export function ItemCard({
                 )}
               </div>
 
-              {item.expirationDate && (
+              {item.expirationDate && expiryDate && (
                 <div className="flex items-center gap-1 mt-1.5">
                   <Calendar className="h-3 w-3 shrink-0" />
                   <span
@@ -120,7 +109,7 @@ export function ItemCard({
                     )}
                   >
                     {isExpired ? "Expired " : isExpiringSoon ? "Expires " : ""}
-                    {expiryDate!.toLocaleDateString()}
+                    {expiryDate.toLocaleDateString()}
                   </span>
                 </div>
               )}

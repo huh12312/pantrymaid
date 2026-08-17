@@ -5,9 +5,21 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { http, HttpResponse } from "msw";
 import { server } from "../mocks/server";
 import { AddItemDialog } from "@/components/inventory/AddItemDialog";
-import type { ProductSearchResult } from "@/lib/api";
+import type { ProductSearchResult, InventoryItem } from "@/lib/api";
 
 const API_BASE = "http://localhost:3000";
+
+// jsdom has no ResizeObserver. Radix's Checkbox (rendered here whenever
+// editItem is set, for the "Mark as opened" control) uses it to size its
+// indicator; earlier tests in this file never render the edit-mode form, so
+// this gap was never exercised. Stub it rather than touching global setup.
+class ResizeObserverStub {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+(globalThis as unknown as { ResizeObserver: typeof ResizeObserverStub }).ResizeObserver ??=
+  ResizeObserverStub;
 
 // ---------------------------------------------------------------------------
 // Minimal wrapper: QueryClientProvider only (no router/theme needed here).
@@ -143,5 +155,261 @@ describe("AddItemDialog — product search with onScanRequest present", () => {
 
     // The mocked result should appear in the list.
     expect(screen.getByRole("option", { name: /coca-cola classic/i })).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Expiry date field — DateInput wiring, preset-clobber guard, estimated
+// flag, and the edit-path clear-sends-null fix.
+// ---------------------------------------------------------------------------
+
+const EDIT_ITEM: InventoryItem = {
+  id: "item-1",
+  name: "Milk",
+  quantity: 1,
+  unit: "unit",
+  location: "fridge",
+  expirationDate: "2026-04-15",
+  expirationEstimated: false,
+  householdId: "hh1",
+  addedBy: "u1",
+  addedAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+  opened: false,
+};
+
+describe("AddItemDialog — expiry date field", () => {
+  it("clearing an existing expiry date on the edit path submits expirationDate: null", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onSubmit, editItem: EDIT_ITEM });
+
+    const dateInput = screen.getByLabelText(/expiry date/i);
+    expect(dateInput).toHaveValue("04/15/2026");
+
+    await user.clear(dateInput);
+    expect(dateInput).toHaveValue("");
+
+    await user.click(screen.getByRole("button", { name: /update item/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ expirationDate: null }));
+  });
+
+  it("does not clobber a typed-but-unsubmitted date when a preset is selected", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onSubmit });
+
+    const dateInput = screen.getByLabelText(/expiry date/i);
+    await user.type(dateInput, "08162026");
+    expect(dateInput).toHaveValue("08/16/2026");
+
+    await user.click(screen.getByRole("button", { name: /quick add a common item/i }));
+    await user.type(screen.getByLabelText(/search common items/i), "Artichoke");
+    await user.click(screen.getByRole("button", { name: /artichoke/i }));
+
+    // The typed date survives the preset tap.
+    expect(dateInput).toHaveValue("08/16/2026");
+
+    await user.type(screen.getByLabelText(/^name/i), "Test Item");
+    await user.click(screen.getByRole("button", { name: /add item/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ expirationDate: "2026-08-16", expirationEstimated: false })
+    );
+  });
+
+  it("preset selection sets expirationEstimated: true when the field is empty", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onSubmit });
+
+    await user.click(screen.getByRole("button", { name: /quick add a common item/i }));
+    await user.type(screen.getByLabelText(/search common items/i), "Artichoke");
+    await user.click(screen.getByRole("button", { name: /artichoke/i }));
+
+    await user.click(screen.getByRole("button", { name: /add item/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({ expirationEstimated: true }));
+
+    onSubmit.mockClear();
+
+    // Typing into the now-estimated field clears the estimated flag again.
+    const dateInput = screen.getByLabelText(/expiry date/i);
+    await user.clear(dateInput);
+    await user.type(dateInput, "01012027");
+    await user.click(screen.getByRole("button", { name: /add item/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ expirationDate: "2027-01-01", expirationEstimated: false })
+    );
+  });
+
+  it("evening rollover: a 7-day preset at 23:30 local time lands 7 days out, not 8", async () => {
+    // Fake only Date, not timers — faking setTimeout/setInterval too would
+    // hang userEvent's internal scheduling.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 7, 16, 23, 30, 0)); // Aug 16, 2026, 23:30 local
+    try {
+      const onSubmit = vi.fn();
+      const user = userEvent.setup();
+      renderDialog({ onSubmit });
+
+      await user.click(screen.getByRole("button", { name: /quick add a common item/i }));
+      await user.type(screen.getByLabelText(/search common items/i), "Artichoke");
+      await user.click(screen.getByRole("button", { name: /artichoke/i }));
+      await user.type(screen.getByLabelText(/^name/i), "Test Item");
+      await user.click(screen.getByRole("button", { name: /add item/i }));
+
+      // Artichoke's estimated shelf life is 7 days: Aug 16 + 7 = Aug 23, never Aug 24.
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ expirationDate: "2026-08-23" })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Enter-to-submit — the field must never blur, so a resolvable short form
+  // (4/6 digits) must still make it into the submitted payload. Regression
+  // guard for FIX 1: pressing Enter inside the form triggers implicit
+  // submission WITHOUT blurring the focused input, so DateInput's keystroke
+  // path (which deliberately defers 4/6-digit resolution to blur) never gets
+  // the chance to resolve on its own — handleSubmit must force it via
+  // dateInputRef.current.resolvePending().
+  // -------------------------------------------------------------------------
+
+  it("Enter-to-submit on the create path resolves a pending 4-digit short form instead of dropping it", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onSubmit });
+
+    await user.type(screen.getByLabelText(/^name/i), "Cheese");
+    const dateInput = screen.getByLabelText(/expiry date/i);
+    // Typing "{Enter}" as part of the same user.type call never blurs the
+    // input first — the keystroke path leaves "0826" unresolved ("").
+    await user.type(dateInput, "0826{Enter}");
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    // Aug 2026, auto-completed to the last day of the month.
+    expect(onSubmit.mock.calls[0]![0].expirationDate).toBe("2026-08-31");
+  });
+
+  it("Enter-to-submit on the edit path resolves a pending short form instead of sending null", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onSubmit, editItem: EDIT_ITEM });
+
+    const dateInput = screen.getByLabelText(/expiry date/i);
+    expect(dateInput).toHaveValue("04/15/2026");
+
+    await user.clear(dateInput);
+    await user.type(dateInput, "0826{Enter}");
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    // Must be the resolved date, not null (which would wipe the existing
+    // expiry) and not undefined (dropped from the JSON body / no-op).
+    expect(onSubmit.mock.calls[0]![0].expirationDate).toBe("2026-08-31");
+  });
+
+  it("blocks submit on the create path when the date is incomplete text that cannot resolve", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onSubmit });
+
+    await user.type(screen.getByLabelText(/^name/i), "Cheese");
+    const dateInput = screen.getByLabelText(/expiry date/i);
+    // "081" never resolves at any digit count — always incomplete.
+    await user.type(dateInput, "081");
+
+    await user.click(screen.getByRole("button", { name: /add item/i }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a complete date");
+  });
+
+  it("create path with an empty date field submits with expirationDate: undefined", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onSubmit });
+
+    await user.type(screen.getByLabelText(/^name/i), "Cheese");
+    await user.click(screen.getByRole("button", { name: /add item/i }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0]![0].expirationDate).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // expiryPartialRef coverage — the existing "does not clobber" test above
+  // types all 8 digits, which resolves to a non-empty canonical value, so
+  // the guard passes even with `expiryPartialRef` removed entirely. This
+  // test types digits that NEVER resolve (canonical stays "" through blur,
+  // not just mid-keystroke), so it fails against a naive
+  // `!prev.expirationDate` guard that only checks the (still-"") canonical
+  // value and would treat the field as empty.
+  // -------------------------------------------------------------------------
+
+  it("does not clobber a genuinely unresolved partial date when a preset is selected", async () => {
+    const onSubmit = vi.fn();
+    const user = userEvent.setup();
+    renderDialog({ onSubmit });
+
+    const dateInput = screen.getByLabelText(/expiry date/i);
+    // "081" is 3 digits — digitsToCanonical never resolves 3-digit input,
+    // on keystroke OR on blur, so this stays partial no matter what focus
+    // changes happen next.
+    await user.type(dateInput, "081");
+    expect(dateInput).toHaveValue("08/1");
+
+    await user.click(screen.getByRole("button", { name: /quick add a common item/i }));
+    await user.type(screen.getByLabelText(/search common items/i), "Artichoke");
+    await user.click(screen.getByRole("button", { name: /artichoke/i }));
+
+    // The typed digits survive the preset tap — untouched.
+    expect(dateInput).toHaveValue("08/1");
+
+    await user.type(screen.getByLabelText(/^name/i), "Test Item");
+    await user.click(screen.getByRole("button", { name: /add item/i }));
+
+    // Still unresolved at submit time — blocked, not silently sent as the
+    // preset's estimate.
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Enter a complete date");
+  });
+
+  it("a second preset selection overwrites the first preset's estimate", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 0, 1, 12, 0, 0)); // Jan 1, 2026, noon local
+    try {
+      const onSubmit = vi.fn();
+      const user = userEvent.setup();
+      renderDialog({ onSubmit });
+
+      const dateInput = screen.getByLabelText(/expiry date/i);
+
+      await user.click(screen.getByRole("button", { name: /quick add a common item/i }));
+      // Artichoke: estimatedShelfDays 7 -> Jan 8, 2026.
+      await user.type(screen.getByLabelText(/search common items/i), "Artichoke");
+      await user.click(screen.getByRole("button", { name: /artichoke/i }));
+      expect(dateInput).toHaveValue("01/08/2026");
+
+      // Avocado: estimatedShelfDays 5 -> Jan 6, 2026. Since the field still
+      // holds a prior system estimate (expirationEstimated: true), the
+      // second preset must overwrite it rather than leaving Artichoke's date.
+      await user.type(screen.getByLabelText(/search common items/i), "Avocado");
+      await user.click(screen.getByRole("button", { name: /avocado/i }));
+      expect(dateInput).toHaveValue("01/06/2026");
+
+      await user.type(screen.getByLabelText(/^name/i), "Test Item");
+      await user.click(screen.getByRole("button", { name: /add item/i }));
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ expirationDate: "2026-01-06", expirationEstimated: true })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

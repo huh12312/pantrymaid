@@ -12,6 +12,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DateInput } from "@/components/ui/DateInput";
+import type { DateInputHandle } from "@/components/ui/DateInput";
 import { Camera, ChevronDown, Search, Sparkles, X } from "lucide-react";
 import { ProductImage } from "@/components/ui/ProductImage";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -22,6 +24,7 @@ import { FOOD_CATEGORIES, COMMON_UNITS } from "@pantrymaid/shared/constants";
 import type { ItemPreset } from "@pantrymaid/shared/constants";
 import { QuickAddPresets } from "./QuickAddPresets";
 import { queryKeys } from "@/lib/queryKeys";
+import { addDays } from "@/lib/dates";
 
 interface AddItemDialogProps {
   open: boolean;
@@ -41,6 +44,7 @@ const emptyForm = (defaultLocation?: ItemLocation): CreateItemDto => ({
   unit: "unit",
   location: defaultLocation ?? "pantry",
   opened: false,
+  expirationEstimated: false,
 });
 
 export function AddItemDialog({
@@ -58,6 +62,18 @@ export function AddItemDialog({
   const [formData, setFormData] = useState<CreateItemDto>(emptyForm(defaultLocation));
   const [duplicateWarning, setDuplicateWarning] = useState<InventoryItem | null>(null);
   const nameBlurTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Mirrors DateInput's `meta.partial` for the expiry field: true while the
+  // user has typed something that hasn't (yet) resolved to a valid date.
+  // formData.expirationDate alone can't distinguish "genuinely empty" from
+  // "mid-typing" — both are "". Only DateInput's onChange (user-driven) ever
+  // writes this ref; programmatic writes (presets, AI suggestion, edit-item
+  // load) never touch it, so it always reflects the user's actual typing state.
+  const expiryPartialRef = useRef(false);
+  // Imperative handle onto DateInput — see handleSubmit. Pressing Enter
+  // inside a form triggers implicit submission WITHOUT blurring the focused
+  // input, so short-form dates (4/6 digits) that only resolve on blur would
+  // otherwise be silently dropped from the submitted payload.
+  const dateInputRef = useRef<DateInputHandle>(null);
 
   // Product search state
   const [searchQuery, setSearchQuery] = useState("");
@@ -74,6 +90,20 @@ export function AddItemDialog({
     enabled: open,
   });
 
+  // Computes an estimated-expiry patch for the preset and AI-suggestion
+  // paths, sharing one guard: only overwrite the expiry when the field is
+  // empty and not mid-typing, or when it currently holds a prior system
+  // estimate. Otherwise the user's own typed/pasted date is preserved.
+  const estimateDatePatch = (
+    prev: CreateItemDto,
+    days: number
+  ): Partial<Pick<CreateItemDto, "expirationDate" | "expirationEstimated">> => {
+    const isEmpty = !prev.expirationDate && !expiryPartialRef.current;
+    const shouldOverwrite = isEmpty || prev.expirationEstimated === true;
+    if (!shouldOverwrite) return {};
+    return { expirationDate: addDays(days), expirationEstimated: true };
+  };
+
   const suggestMutation = useMutation({
     mutationFn: (name: string) => api.suggestItemDefaults(name),
     onSuccess: (suggestion) => {
@@ -81,11 +111,9 @@ export function AddItemDialog({
         ...prev,
         unit: suggestion.unit,
         category: suggestion.category,
-        expirationDate: suggestion.estimatedShelfDays
-          ? new Date(Date.now() + suggestion.estimatedShelfDays * 86400000)
-              .toISOString()
-              .split("T")[0]
-          : prev.expirationDate,
+        ...(suggestion.estimatedShelfDays
+          ? estimateDatePatch(prev, suggestion.estimatedShelfDays)
+          : {}),
       }));
     },
   });
@@ -151,6 +179,10 @@ export function AddItemDialog({
 
   useEffect(() => {
     if (!open) return;
+    // The dialog is being (re)populated for a new subject (edit item,
+    // scanned product, or a fresh blank form) — any in-progress typing state
+    // from a previous open no longer applies.
+    expiryPartialRef.current = false;
     if (editItem) {
       setFormData({
         name: editItem.name,
@@ -160,6 +192,7 @@ export function AddItemDialog({
         location: editItem.location,
         category: editItem.category ?? undefined,
         expirationDate: editItem.expirationDate ?? undefined,
+        expirationEstimated: editItem.expirationEstimated,
         barcodeUpc: editItem.barcodeUpc ?? undefined,
         imageUrl: editItem.imageUrl ?? undefined,
         notes: editItem.notes ?? undefined,
@@ -176,6 +209,7 @@ export function AddItemDialog({
         imageUrl: scannedProduct.imageUrl,
         barcodeUpc: scannedProduct.barcode,
         opened: false,
+        expirationEstimated: false,
       });
     } else {
       setFormData(emptyForm(defaultLocation));
@@ -206,25 +240,43 @@ export function AddItemDialog({
   };
 
   const handlePresetSelect = (preset: ItemPreset) => {
-    const expirationDate = new Date(Date.now() + preset.estimatedShelfDays * 86400000)
-      .toISOString()
-      .split("T")[0];
     setFormData((prev) => ({
       ...prev,
       name: preset.name,
       category: preset.category,
       unit: preset.unit,
-      expirationDate,
+      ...estimateDatePatch(prev, preset.estimatedShelfDays),
     }));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Coerce empty-string expirationDate to undefined so the server's z.coerce.date()
-    // doesn't receive "" which produces an Invalid Date and a 400.
-    const payload = {
+    // Force-resolve any pending short-form date (4/6 digits) before reading
+    // it. Pressing Enter submits the form without blurring the focused
+    // input, so DateInput's keystroke path never got a chance to resolve —
+    // formData.expirationDate would still be "" here even though the user
+    // typed something valid. Use the RETURNED value, not formData: the
+    // onChange resolvePending() fires internally is a state update and is
+    // not visible in formData until the next render, after this function
+    // has already run.
+    const pending = dateInputRef.current
+      ? dateInputRef.current.resolvePending()
+      : (formData.expirationDate ?? "");
+    if (pending === null) {
+      // Unresolvable text is present — DateInput is now showing "Enter a
+      // complete date". Block the submit rather than silently discarding or
+      // wiping what the user typed.
+      dateInputRef.current?.focus();
+      return;
+    }
+    // Coerce an empty expirationDate: on the create path to undefined (so the
+    // server's z.coerce.date() never receives "" and produces an Invalid Date
+    // / 400), on the edit path to null so an existing expiry can actually be
+    // cleared — undefined is dropped from the JSON body entirely and Drizzle
+    // skips undefined columns on .set(), silently no-opping the clear.
+    const payload: CreateItemDto = {
       ...formData,
-      expirationDate: formData.expirationDate || undefined,
+      expirationDate: pending ? pending : editItem ? null : undefined,
     };
     onSubmit(payload);
     // Parent closes the dialog on success (or keeps it open on error)
@@ -527,11 +579,20 @@ export function AddItemDialog({
 
               <div>
                 <Label htmlFor="expirationDate">Expiry Date</Label>
-                <Input
+                <DateInput
+                  ref={dateInputRef}
                   id="expirationDate"
-                  type="date"
                   value={formData.expirationDate || ""}
-                  onChange={(e) => setFormData({ ...formData, expirationDate: e.target.value })}
+                  onChange={(value, meta) => {
+                    expiryPartialRef.current = meta.partial;
+                    setFormData((prev) => ({
+                      ...prev,
+                      expirationDate: value,
+                      // Any user-driven edit (typing, clearing) supersedes a
+                      // prior system estimate — it's no longer an estimate.
+                      expirationEstimated: false,
+                    }));
+                  }}
                 />
               </div>
 

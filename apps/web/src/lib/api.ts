@@ -45,7 +45,12 @@ export interface CreateItemDto {
   unit: string;
   location: ItemLocation;
   category?: string;
-  expirationDate?: string;
+  // null is a deliberate, distinct value from undefined here: it means "clear
+  // the expiry date" on the edit path (survives the shared Zod schema's
+  // `.nullable()` and reaches `.set({ expirationDate: null })`), whereas
+  // undefined means "no change" (dropped before the request body is built).
+  expirationDate?: string | null;
+  expirationEstimated?: boolean;
   barcodeUpc?: string;
   imageUrl?: string;
   notes?: string;

@@ -65,16 +65,43 @@ test.describe("Inventory Management", () => {
     // Wait for dialog to open
     await expect(page.locator('text="Add New Item"')).toBeVisible();
 
-    // Fill in the form with expiry date
+    // Fill in the form with expiry date. #expirationDate is a masked text
+    // input (MM/DD/YYYY), not a native date input — page.fill() would bypass
+    // the mask entirely and silently succeed against a fixture-shaped string
+    // like "2026-04-15" (read as month "20" -> invalid -> field stays empty),
+    // so use pressSequentially to actually exercise the mask.
+    const [year, month, day] = (ITEMS.withExpiry.expiryDate ?? "").split("-");
+    const digits = `${month}${day}${year}`; // MMDDYYYY, as a user would type it
+    const maskedValue = `${month}/${day}/${year}`; // display value inside the field
+
     await page.fill("#name", ITEMS.withExpiry.name);
     await page.fill("#quantity", ITEMS.withExpiry.quantity.toString());
-    await page.fill("#expirationDate", ITEMS.withExpiry.expiryDate || "");
+    const expiryInput = page.locator("#expirationDate");
+    await expiryInput.click();
+    await expiryInput.pressSequentially(digits);
+    await expect(expiryInput).toHaveValue(maskedValue);
 
     // Submit the form
     await page.click('button:has-text("Add Item")');
 
     // Verify the item appears
     await expect(page.locator(`text="${ITEMS.withExpiry.name}"`)).toBeVisible();
+
+    // Verify the expiry date actually made it onto the card, not just the
+    // name. The card renders via toLocaleDateString(), which (en-US) omits
+    // leading zeros, so build the match from numeric month/day rather than
+    // asserting the zero-padded masked value again.
+    //
+    // Scope to fridgeSection rather than `div:has-text(...).first()`:
+    // `:has-text` matches ANY ancestor containing the text, so `.first()`
+    // would resolve to an outer wrapper containing every card in the
+    // section, and an unanchored date regex could match a different item's
+    // date and still pass. fridgeSection itself only contains this test's
+    // one item, so scoping the search to it (rather than to a nested
+    // `div:has-text` locator at all) is unambiguous. See commit 14398cd for
+    // the same class of fix.
+    const cardDatePattern = new RegExp(`${Number(month)}/${Number(day)}/${year}`);
+    await expect(fridgeSection.getByText(cardDatePattern)).toBeVisible();
   });
 
   test("should delete an item", async ({ page }) => {

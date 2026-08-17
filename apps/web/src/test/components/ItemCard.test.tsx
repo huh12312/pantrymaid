@@ -228,6 +228,34 @@ describe("ItemCard action buttons do not propagate to toggle", () => {
 // Collapsed state — expanded panel controls are not in the document
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Expiration date rendering — guards the deleted `+ "T00:00:00"` workaround
+// at the wiring level (ItemCard now goes through parseLocalDate).
+// ---------------------------------------------------------------------------
+
+describe("ItemCard expiration date rendering", () => {
+  it("renders a bare YYYY-MM-DD expirationDate as the correct calendar day, not a day early", () => {
+    // A regression here would look like `new Date(item.expirationDate)`
+    // parsing "2026-04-15" as UTC midnight, which under a UTC-negative zone
+    // (this suite pins TZ=America/New_York) displays April 14 instead of
+    // April 15. `toLocaleDateString()`'s output format depends on the
+    // runtime's default locale (not pinned by TZ alone), so derive the
+    // expectation from the same call rather than hardcoding "4/15/2026".
+    const expected = new Date(2026, 3, 15).toLocaleDateString();
+    render(
+      <ItemCard
+        {...defaultProps({
+          item: { ...baseItem, expirationDate: "2026-04-15" },
+          isExpanded: false,
+        })}
+      />
+    );
+    // The collapsed row prefixes the date with "Expired "/"Expires " when
+    // relevant; match the date as a substring so that prefix doesn't matter.
+    expect(screen.getByText(new RegExp(expected.replace(/\//g, "\\/")))).toBeInTheDocument();
+  });
+});
+
 describe("ItemCard collapsed state — expanded panel is hidden", () => {
   it("stepper buttons are not in the document when isExpanded is false", () => {
     render(<ItemCard {...defaultProps({ isExpanded: false })} />);

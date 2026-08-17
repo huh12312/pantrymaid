@@ -49,10 +49,7 @@ import { HouseSelector } from "@/components/layout/HouseSelector";
 import { useNavigate } from "react-router-dom";
 import { useInventoryMutations } from "@/hooks/useInventoryMutations";
 import { filterBySearch } from "@/lib/inventoryFilters";
-
-function parseExpiry(d: string) {
-  return new Date(d.includes("T") ? d : d + "T00:00:00");
-}
+import { parseLocalDate } from "@/lib/dates";
 
 export default function InventoryPage() {
   const navigate = useNavigate();
@@ -230,7 +227,8 @@ export default function InventoryPage() {
     () =>
       items.filter((item) => {
         if (!item.expirationDate) return false;
-        const d = parseExpiry(item.expirationDate);
+        const d = parseLocalDate(item.expirationDate);
+        if (!d) return false;
         return d > new Date() && d <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       }).length,
     [items]
@@ -238,9 +236,11 @@ export default function InventoryPage() {
 
   const expiredCount = useMemo(
     () =>
-      items.filter((item) =>
-        item.expirationDate ? parseExpiry(item.expirationDate) < new Date() : false
-      ).length,
+      items.filter((item) => {
+        if (!item.expirationDate) return false;
+        const d = parseLocalDate(item.expirationDate);
+        return d ? d < new Date() : false;
+      }).length,
     [items]
   );
 
@@ -272,7 +272,8 @@ export default function InventoryPage() {
     () =>
       sectionItems.filter((item) => {
         if (!item.expirationDate) return false;
-        const d = parseExpiry(item.expirationDate);
+        const d = parseLocalDate(item.expirationDate);
+        if (!d) return false;
         return d > new Date() && d <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       }).length,
     [sectionItems]
@@ -454,7 +455,9 @@ export default function InventoryPage() {
                 {sectionItems.length} {sectionItems.length === 1 ? "item" : "items"}
               </span>
               {sectionExpiringCount > 0 && (
-                <span className="font-medium text-warning">{sectionExpiringCount} expiring soon</span>
+                <span className="font-medium text-warning">
+                  {sectionExpiringCount} expiring soon
+                </span>
               )}
             </div>
           )}

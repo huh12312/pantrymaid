@@ -22,6 +22,9 @@ export default defineConfig({
     baseURL: "http://localhost:5173",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    // CI runners default to UTC; the developer's machine is America/New_York.
+    // Pin one zone so date-boundary behavior is consistent across environments.
+    timezoneId: "America/New_York",
   },
 
   projects: [
