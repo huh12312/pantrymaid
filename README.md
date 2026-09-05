@@ -1,193 +1,198 @@
+<div align="center">
+
 # PantryRadar
 
-A multi-user household inventory app for pantry, fridge, and freezer management. Track food items by barcode scan or receipt photo, monitor expiration dates, and share a household with family members via invite code.
+**Know what you have. Know what's about to go off. Know what to cook.**
 
-## Tech Stack
+A self-hosted household inventory app for your pantry, fridge, and freezer — with an
+AI meal planner that builds a week of meals from what's actually on your shelves.
 
-| Layer    | Technology                                        |
-| -------- | ------------------------------------------------- |
-| Web      | React 19 + Vite 8 + shadcn/ui + TanStack Query v5 |
-| API      | Hono + Bun                                        |
-| Database | PostgreSQL 16 (Docker) + Drizzle ORM              |
-| Auth     | Better Auth (email/password, session cookies)     |
-| Proxy    | Caddy (automatic SSL in production)               |
-| Monorepo | Turborepo + pnpm                                  |
+[![CI](https://github.com/huh12312/pantryradar/actions/workflows/ci.yml/badge.svg)](https://github.com/huh12312/pantryradar/actions/workflows/ci.yml)
+[![E2E](https://github.com/huh12312/pantryradar/actions/workflows/e2e.yml/badge.svg)](https://github.com/huh12312/pantryradar/actions/workflows/e2e.yml)
+[![Docker](https://img.shields.io/docker/v/masterhuh/pantryradar?label=docker&sort=semver)](https://hub.docker.com/r/masterhuh/pantryradar)
 
-### External integrations
-
-| Service                            | Purpose                                                      |
-| ---------------------------------- | ------------------------------------------------------------ |
-| Open Food Facts                    | Barcode → product name, brand, category, image               |
-| Veryfi                             | Receipt OCR (line items + totals)                            |
-| OpenAI / Anthropic / Groq / Ollama | Receipt decoding, expiration estimation, image normalisation |
-| Wikipedia PageImages API           | Free-licensed food images                                    |
-| Pexels                             | Stock photo fallback for item images                         |
-
-LLM provider is configurable via `LLM_PROVIDER` env var (`openai` \| `anthropic` \| `groq` \| `ollama`). Defaults to OpenAI `gpt-4o-mini`.
+</div>
 
 ---
 
-## Project Structure
+## What it does
 
-```
-pantryradar/
-├── apps/
-│   └── web/                  # React + Vite web app  (port 5173)
-├── server/                   # Hono + Bun API        (port 3000)
-├── packages/
-│   ├── shared/               # Zod schemas, types, API client, constants
-│   └── ui/                   # Shared UI components (placeholder)
-├── e2e/                      # Playwright end-to-end tests
-├── docker-compose.yml        # PostgreSQL + Caddy
-├── Caddyfile
-└── .env.example
-```
+Add food by scanning a barcode or photographing a receipt. PantryRadar fills in the
+product name, brand, category, an image, and an estimated expiration date. Share the
+household with family via an invite code — everyone sees the same inventory.
+
+Then it plans your meals around what you already own.
+
+![Meal plan — a scrollable multi-day view](docs/images/meal-plan.png)
+
+### The meal planner
+
+Point it at your own LLM API key and it generates a plan from current inventory. You pick
+which meal slots to fill, whether to prioritise food that's about to expire, and how many
+days to cover.
+
+Crucially, **what you have versus what you need to buy is decided in code, not by the
+model.** Ingredients are normalised and matched against your pantry, so the model can't
+hallucinate that you're out of onions. Kitchen staples — salt, pepper, oil — are
+recognised and never added to your shopping list.
+
+![Recipe detail with have/buy/staple classification](docs/images/recipe-sheet.png)
+
+Above: chicken breast in the fridge satisfies a recipe calling for "chicken"; olive oil,
+salt and pepper are classified as staples; only the lemon is flagged to buy.
+
+### The buy list
+
+Every ingredient across the plan is aggregated into one list, deduplicated, and grouped by
+whether you already have it. One tap pushes the missing items into your shopping list.
+
+![Aggregated buy list](docs/images/buy-list.png)
+
+Quantities in the same unit are summed. Mixed units render as `2 cups + 1 unit` rather
+than inventing a conversion — `items.unit` is free text, so any unit maths would be
+fiction.
+
+### Inventory
+
+![Inventory across pantry, fridge, and freezer](docs/images/inventory.png)
 
 ---
 
-## Getting Started
+## Features
 
-### Quick start (Docker Hub)
+| | |
+|---|---|
+| **Barcode scanning** | Open Food Facts lookup → name, brand, category, image |
+| **Receipt photos** | Vision-model OCR extracts line items; you review before anything is saved |
+| **Expiration tracking** | LLM-estimated shelf life per item, with expiring/expired surfacing |
+| **AI meal planning** | Weekly plans from live inventory, expiring-first mode, per-meal regeneration |
+| **Deterministic buy list** | Have/buy decided in code, staples excluded, one-tap to shopping list |
+| **Multi-household** | 8-character invite codes; strict per-household data isolation |
+| **Multiple houses** | Track separate locations (main house, beach house) in one household |
+| **Bring your own key** | OpenAI, Anthropic, or OpenRouter — per household or container-wide |
+| **Mobile-first** | Responsive down to Pixel 5; accessibility gated in CI with axe |
 
-The fastest way to run PantryRadar. No code checkout required — only Docker and a `.env` file.
+---
 
-**Prerequisites:** Docker + Docker Compose
+## Quick start (Docker)
+
+**Prerequisites:** Docker + Docker Compose. No checkout required.
 
 ```bash
-# 1. Download the compose file
+# 1. Get the compose file and env template
 curl -O https://raw.githubusercontent.com/huh12312/pantryradar/main/docker-compose.yml
+curl -o .env https://raw.githubusercontent.com/huh12312/pantryradar/main/.env.example
 
-# 2. Create your environment file
-curl -O https://raw.githubusercontent.com/huh12312/pantryradar/main/.env.example
-cp .env.example .env
-# Edit .env — fill in DATABASE_URL, BETTER_AUTH_SECRET, OPENAI_API_KEY, Veryfi creds
+# 2. Generate the three required secrets
+echo "POSTGRES_PASSWORD=$(openssl rand -base64 24 | tr -d /+=)"
+echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)"
+echo "MEAL_PLAN_KEK=$(openssl rand -base64 32)"
+# → paste each into .env, replacing the placeholders
 
-# 3. Start everything
+# 3. Start
 docker compose up -d
 ```
 
-That pulls `masterhuh/pantryradar:latest` from Docker Hub, starts PostgreSQL, and runs Caddy in front of the API.
+Open **http://localhost:3000**. Sign up — your household is created automatically.
 
-To pin a specific release replace `latest` with a version tag in `docker-compose.yml`:
+> [!IMPORTANT]
+> All three secrets above are **required**, and the placeholders in `.env.example` are
+> deliberately invalid. In particular `MEAL_PLAN_KEK` must decode to exactly 32 bytes —
+> the server refuses to store API keys without it rather than falling back to plaintext.
+> See [Troubleshooting](#troubleshooting).
+
+Pin a release instead of `latest` in `docker-compose.yml`:
 
 ```yaml
-image: masterhuh/pantryradar:1.0.0
+image: masterhuh/pantryradar:0.11.0
 ```
 
-To pull the newest image after a release:
-
-```bash
-docker compose pull && docker compose up -d
-```
+Upgrade with `docker compose pull && docker compose up -d`. Database migrations apply
+automatically at boot.
 
 ---
 
-### Development setup (from source)
+## Setting up the LLM
 
-**Prerequisites:** Bun 1.x · pnpm 9+ · Node.js 20+ · Docker + Docker Compose
+Everything AI-powered — meal planning, receipt OCR, expiration estimates, item
+suggestions — runs off **one** credential. There are two ways to supply it.
+
+### Option A — container-wide (simplest)
+
+One key for every household. Set in `.env`:
 
 ```bash
-# 1. Clone
+LLM_PROVIDER=openai          # openai | anthropic | groq | ollama
+LLM_MODEL=gpt-5.4-mini
+OPENAI_API_KEY=sk-...
+```
+
+No `MEAL_PLAN_KEK` needed for this path — there's nothing to encrypt.
+
+### Option B — per household (bring your own key)
+
+Each household saves its own provider, model, and key in **Settings → AI Meal Planning**.
+Keys are encrypted at rest with AES-256-GCM and are never returned by the API.
+
+![AI settings — provider, model, key, and prompt](docs/images/settings-ai.png)
+
+Model suggestions are fetched **live from your provider**, so newly released models appear
+without waiting for an app update. The field stays free-text, so an unlisted model is
+never blocked.
+
+The prompt template is editable and appended to a fixed base prompt — allergies and
+dietary restrictions are separate first-class fields, so a prompt edit can never silently
+delete them.
+
+**Resolution order:** household key → matching env key for that provider → generation
+fails with a clear error. A household on Anthropic will not silently fall back to an
+`OPENAI_API_KEY`.
+
+---
+
+## Development
+
+**Prerequisites:** Bun 1.x · pnpm 8+ · Node 20+ · Docker
+
+```bash
 git clone https://github.com/huh12312/pantryradar.git
 cd pantryradar
-
-# 2. Install dependencies
 pnpm install
 
-# 3. Configure environment
-cp .env.example .env
-# Fill in DATABASE_URL, BETTER_AUTH_SECRET, OPENAI_API_KEY, Veryfi creds, etc.
+cp .env.example .env          # fill in the three secrets above
 
-# 4. Start PostgreSQL only (API runs locally)
-docker compose up -d postgres
-
-# 5. Apply database schema
-cd server && bun run db:push && cd ..
-
-# 6. Start dev servers (web + API with hot reload)
-pnpm dev
+docker compose up -d postgres # database only; API runs from source
+pnpm dev                      # web :5173 + API :3000, both hot-reloading
 ```
 
-Web app: **http://localhost:5173**  
-API: **http://localhost:3000**
+> [!NOTE]
+> `docker-compose.yml` does not publish Postgres to the host. To run the API from source
+> against it, add a `docker-compose.override.yml` (gitignored):
+> ```yaml
+> services:
+>   postgres:
+>     ports: ["5432:5432"]
+> ```
 
----
-
-## Common Commands
-
-Run from the repo root unless noted.
+### Commands
 
 ```bash
-pnpm dev          # Start web + API dev servers
-pnpm build        # Build all packages and apps
-pnpm lint         # ESLint across all packages
-pnpm format       # Prettier
-pnpm clean        # Clear Turborepo cache and node_modules
+pnpm dev        # web + API dev servers
+pnpm build      # build everything
+pnpm lint       # ESLint across all packages
+pnpm format     # Prettier
 ```
 
-### Backend (`server/`)
+| Scope | Command | Notes |
+|---|---|---|
+| Server unit | `cd server && bun test src/test/lib` | Pure logic, no DB required |
+| Server routes | `cd server && bun run test:integration` | Testcontainers — needs Docker |
+| Server live LLM | `cd server && bun run test:live` | **Manual only**, needs a real API key |
+| Web | `cd apps/web && pnpm test` | Vitest + MSW, coverage gated |
+| Shared | `cd packages/shared && pnpm test` | Zod contract tests, 90% threshold |
+| E2E | `pnpm test:e2e` | Playwright, needs API + web running |
 
-```bash
-bun run dev          # Watch mode
-bun run db:generate  # Generate Drizzle migration files
-bun run db:push      # Apply schema to PostgreSQL
-bun run seed         # Seed database with Faker test data
-bun test             # Run server unit + integration tests
-```
-
-### Web app (`apps/web/`)
-
-```bash
-pnpm dev             # Vite dev server on :5173
-pnpm test            # Vitest (jsdom)
-pnpm test --coverage # Coverage report (80% threshold)
-```
-
-### E2E tests (repo root)
-
-Requires API (`:3000`) and web dev server (`:5173`) to be running.
-
-```bash
-pnpm test:e2e                       # All projects (Chromium desktop + Mobile Chrome)
-pnpm exec playwright test --ui      # Interactive mode
-pnpm exec playwright show-report
-```
-
-Two Playwright projects run in CI:
-
-- **chromium** — Desktop Chrome at 1280×720. Runs `auth`, `inventory`, `barcode`,
-  `receipt`, `offline`, `a11y`, and `visual` specs.
-- **Mobile Chrome** — Pixel 5 device emulation. Runs `auth`, `inventory`,
-  `mobile`, `a11y`, and `visual` specs.
-
-Mobile-web flows (segmented top tabs, FAB, bottom-sheet dialogs, overflow menu)
-live in `e2e/mobile.spec.ts`. Accessibility checks use `@axe-core/playwright`
-in `e2e/a11y.spec.ts` against both projects.
-
-#### Visual regression baselines
-
-`e2e/visual.spec.ts` snapshots the login + inventory pages with
-`toHaveScreenshot()`. Baselines live under `e2e/visual.spec.ts-snapshots/` and
-are project-scoped (separate images for desktop vs. Mobile Chrome).
-
-The visual suite is **skipped** unless `RUN_VISUAL=1` is set, so it doesn't
-break CI before baselines are committed. First-time setup:
-
-```bash
-# 1. Generate baselines locally with the stack running
-RUN_VISUAL=1 pnpm test:e2e:update-snapshots
-
-# 2. Commit the snapshots
-git add e2e/visual.spec.ts-snapshots
-git commit -m "chore(visual): seed baselines"
-
-# 3. Flip RUN_VISUAL=1 in .github/workflows/e2e.yml
-#    (search for the `Run Playwright E2E tests` step)
-```
-
-After that, `RUN_VISUAL=1 pnpm test:e2e` will diff against the committed
-images. To refresh after intentional UI changes, repeat steps 1 + 2 with
-`pnpm test:e2e:update-snapshots`.
+Server tests run from the `server/` directory — the migration journal path is relative.
 
 ---
 
@@ -195,96 +200,250 @@ images. To refresh after intentional UI changes, repeat steps 1 + 2 with
 
 ```
 Browser (desktop + mobile web)
-       │
-       ▼
-Vite dev :5173  (proxies /api/* → :3000)
-       │
-       ▼
-Hono API :3000
-  ├── Better Auth      — session cookies, email/password
-  ├── Drizzle ORM      — PostgreSQL 16
-  ├── Image Resolver   — Wikipedia → Pexels fallback (fire-and-forget)
-  └── LLM layer        — multi-provider via Vercel AI SDK
+      │
+      ▼
+Caddy (production) / Vite dev proxy (:5173)
+      │
+      ▼
+Hono API on Bun (:3000)
+  ├── Better Auth        session cookies, email/password
+  ├── Drizzle ORM        PostgreSQL 16, migrations applied at boot
+  ├── LLM layer          Vercel AI SDK — per-household or container-wide credentials
+  ├── Meal-plan worker   two-phase generation, in-process, DB-backed status
+  └── Image resolver     Wikipedia → Pexels fallback (fire-and-forget)
 ```
 
-**API response envelope:**
+All API responses share one envelope:
 
 ```json
 { "success": true, "data": {}, "error": null }
 ```
 
-**Key routes:**
+### How a meal plan is generated
 
-| Method              | Path                   | Auth | Description               |
-| ------------------- | ---------------------- | ---- | ------------------------- |
-| GET                 | `/health`              | —    | Health check              |
-| POST/GET            | `/api/auth/**`         | —    | Better Auth handler       |
-| GET/POST/PUT/DELETE | `/api/items`           | ✓    | Inventory CRUD            |
-| GET/POST            | `/api/households`      | ✓    | Household management      |
-| POST                | `/api/households/join` | ✓    | Join via invite code      |
-| GET                 | `/api/barcode/:upc`    | ✓    | Open Food Facts lookup    |
-| POST                | `/api/receipt`         | ✓    | Veryfi OCR + LLM decoding |
+1. `POST /api/meal-plans` returns **202** immediately with a plan id.
+2. A background worker generates a **skeleton** (one call), then **one call per meal** at
+   concurrency 4. One failed recipe marks only that meal failed — the plan stays usable.
+3. The client polls `GET /api/meal-plans/:id`, which returns the plan **as far as it has
+   been built**, so days appear incrementally.
+4. After generation, ingredients are reconciled against live inventory in code to decide
+   have/buy/staple.
 
----
+A partial unique index guarantees one active generation per household, so two family
+members hitting Generate at once produce one plan, not two.
 
-## Household & Invite Codes
+### Key routes
 
-On sign-up a household is automatically created for the user. The 8-character invite code is displayed in the sidebar and can be copied to the clipboard. A second user enters the code at `/join` to join the same household.
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/health` | Health check (public) |
+| `*` | `/api/auth/**` | Better Auth |
+| `GET/POST/PUT/DELETE` | `/api/items` | Inventory CRUD |
+| `GET` | `/api/barcode/:upc` | Open Food Facts lookup |
+| `POST` | `/api/receipt` | Vision-model receipt OCR |
+| `GET/PUT` | `/api/settings/llm` | Provider, model, key (write-only) |
+| `GET` | `/api/settings/llm/models` | Live model catalogue from the provider |
+| `POST/GET` | `/api/meal-plans` | Create / list plans |
+| `GET` | `/api/meal-plans/:id` | Full plan + generation status (polling) |
+| `POST` | `/api/meal-plans/:id/shopping/commit` | Push buy list to shopping list |
 
-Codes use a 32-character unambiguous alphabet (`ABCDEFGHJKLMNPQRSTUVWXYZ23456789`) generated with `crypto.getRandomValues` (~35 bits of entropy).
-
----
-
-## Environment Variables
-
-See `.env.example` for the full list. Key variables:
-
-| Variable             | Description                                                       |
-| -------------------- | ----------------------------------------------------------------- |
-| `DATABASE_URL`       | PostgreSQL connection string                                      |
-| `BETTER_AUTH_SECRET` | 32-byte random secret (`openssl rand -base64 32`)                 |
-| `BETTER_AUTH_URL`    | API base URL (e.g. `http://localhost:3000`)                       |
-| `OPENAI_API_KEY`     | OpenAI key (required unless using another LLM provider)           |
-| `LLM_PROVIDER`       | `openai` \| `anthropic` \| `groq` \| `ollama` (default: `openai`) |
-| `LLM_MODEL`          | Model override (defaults per provider)                            |
-| `VERYFI_CLIENT_ID`   | Veryfi credentials for receipt OCR                                |
-| `PEXELS_API_KEY`     | Optional — enables Pexels fallback images                         |
-| `DOMAIN`             | Production domain                                                 |
-| `SSL_MODE`           | `internal` (dev) or `auto` (production Let's Encrypt)             |
+Every data route is authenticated and filtered by household in the same SQL statement.
+Cross-household access returns **404**, never 403 — existence is not confirmed.
 
 ---
 
-## Deployment
+## Configuration
 
-### Docker image
+Full list in [`.env.example`](.env.example). The essentials:
 
-Tagged releases are automatically built and pushed to Docker Hub by GitHub Actions:
+| Variable | Required | Description |
+|---|:---:|---|
+| `POSTGRES_PASSWORD` | ✅ | Postgres will not start without it |
+| `DATABASE_URL` | ✅ | Connection string |
+| `BETTER_AUTH_SECRET` | ✅ | `openssl rand -base64 32` |
+| `BETTER_AUTH_URL` | ✅ | API base URL |
+| `MEAL_PLAN_KEK` | ⚠️ | Required **only** for per-household keys. Exactly 32 bytes, base64 |
+| `MEAL_PLAN_KEK_PREVIOUS` | | Decrypt-only fallback during key rotation |
+| `LLM_PROVIDER` / `LLM_MODEL` | | Container-wide default provider and model |
+| `LLM_VISION_MODEL` | | Vision model for receipt OCR |
+| `OPENAI_API_KEY` etc. | | Container-wide key for the matching provider |
+| `PEXELS_API_KEY` | | Optional — stock-photo fallback for item images |
+| `SIGNUP_ENABLED` | | Set `false` to close registration after your household is set up |
+| `DOMAIN` / `SSL_MODE` | | Production domain; `internal` (dev) or `auto` (Let's Encrypt) |
 
-```
-masterhuh/pantryradar:<version>
-masterhuh/pantryradar:latest
-```
+---
 
-To publish a new release:
+## Maintenance
+
+### Backups
+
+Two things matter, and **both** are needed to restore a working system:
 
 ```bash
-git tag v1.2.3
-git push origin v1.2.3
+# 1. The database
+docker compose exec -T postgres pg_dump -U pantrymaid pantrymaid | gzip > backup-$(date +%F).sql.gz
+
+# 2. Your .env — specifically MEAL_PLAN_KEK
 ```
 
-The `docker-publish` workflow builds from source, tags the image with the semver version and `latest`, and pushes to `masterhuh/pantryradar`.
+> [!WARNING]
+> A database backup **without** `MEAL_PLAN_KEK` cannot decrypt stored API keys. That's by
+> design — the dump alone is not enough to steal credentials — but it means losing the KEK
+> means every household must re-enter their key. Back it up like any other production
+> secret, separately from the database.
 
-### CI workflows
+Restore:
 
-| Workflow             | Trigger  | What it does                                                          |
-| -------------------- | -------- | --------------------------------------------------------------------- |
-| `ci.yml`             | PR       | Lint + build + unit tests                                             |
-| `e2e.yml`            | PR       | PostgreSQL + migrations + Playwright                                  |
-| `docker-publish.yml` | `v*` tag | Build + push to Docker Hub                                            |
-| `deploy.yml`         | Manual   | SSH deploy stub (configure `SSH_PRIVATE_KEY`, `SSH_HOST`, `SSH_USER`) |
+```bash
+gunzip -c backup-2026-09-05.sql.gz | docker compose exec -T postgres psql -U pantrymaid pantrymaid
+```
+
+### Rotating the encryption key
+
+```bash
+# 1. Move the current key to the fallback slot, generate a new one
+MEAL_PLAN_KEK_PREVIOUS=<old key>
+MEAL_PLAN_KEK=$(openssl rand -base64 32)
+
+# 2. Recreate the container
+docker compose up -d --force-recreate api
+```
+
+Existing keys decrypt with the previous KEK and re-encrypt under the new one as households
+save. Once every household has re-saved, remove `MEAL_PLAN_KEK_PREVIOUS`.
+
+### Upgrading
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Migrations run automatically at boot and are idempotent. Take a database backup first for
+any release that adds migrations — the release notes say when it does.
+
+### Controlling LLM spend
+
+- Set `monthlyTokenCap` per household to hard-stop generation past a budget.
+- Generation is rate-limited per household (hourly and daily), persisted in Postgres so a
+  restart doesn't reset it.
+- Each plan records its token usage; the plan header shows model and approximate cost.
+- Prefer a smaller model — `gpt-5.4-mini` produces good plans for a fraction of the cost.
+
+### Closing registration
+
+After your household is set up, set `SIGNUP_ENABLED=false` and recreate the container.
+Existing users are unaffected; new sign-ups are rejected. Family members join with the
+household invite code instead.
+
+---
+
+## Troubleshooting
+
+<details>
+<summary><strong>"Server is not configured to store API keys" when saving a key</strong></summary>
+
+`MEAL_PLAN_KEK` is missing or the wrong length. Logs will show
+`MEAL_PLAN_KEK is not set. Refusing to encrypt/decrypt secrets` or
+`must decode to exactly 32 bytes (got N)`.
+
+```bash
+openssl rand -base64 32          # add to .env as MEAL_PLAN_KEK
+docker compose up -d --force-recreate api
+```
+
+`docker compose restart` is **not** enough — it reuses the old environment. Don't copy the
+placeholder from `.env.example`; it decodes to 6 bytes and will fail the same way.
+
+Verify: `docker compose exec api sh -c 'echo ${MEAL_PLAN_KEK:+SET}'`
+</details>
+
+<details>
+<summary><strong>Postgres container restarts in a loop</strong></summary>
+
+`POSTGRES_PASSWORD` is unset. Postgres refuses to initialise without one. Set it in `.env`
+and run `docker compose up -d`.
+</details>
+
+<details>
+<summary><strong>Meal plan generation fails immediately</strong></summary>
+
+Check the error on the plan:
+
+- **`invalid_api_key`** — the provider rejected the key. Use **Test connection** in
+  Settings; it reports the provider's own error.
+- **`no_api_key`** — no household key and no matching env key *for that provider*. An
+  Anthropic household needs `ANTHROPIC_API_KEY`, not `OPENAI_API_KEY`.
+- **`rate_limited`** — the provider is throttling; retry after the stated delay.
+- **`internal_error`** — a bug on our side, not the provider. Check the API logs.
+</details>
+
+<details>
+<summary><strong>Receipt OCR fails but meal planning works</strong></summary>
+
+Your chat model probably isn't vision-capable. Set a vision model in **Settings → Vision
+model (receipt OCR)** or `LLM_VISION_MODEL` in `.env`.
+</details>
+
+---
+
+## Testing
+
+| Suite | Count |
+|---|---|
+| Server unit | 217 |
+| Server routes (testcontainers) | 149 |
+| Web (Vitest + MSW) | 382 |
+| Shared schema contracts | 124 |
+| E2E (Chromium + Pixel 5) | 70 |
+
+Accessibility is enforced in CI: `e2e/a11y.spec.ts` runs axe (WCAG 2 A/AA) against every
+major screen on both desktop and mobile viewports and asserts **zero violations**.
+
+No test ever makes a real LLM call. A global preload replaces the model seam with a
+thrower, so a suite that forgets to stub fails loudly instead of billing an account.
+
+---
+
+## Releasing
+
+Tagging a `v*` release builds and publishes the Docker image, gated on CI and E2E passing:
+
+```bash
+gh release create v0.12.0 --title "v0.12.0 — Title" --notes "..."
+```
+
+| Workflow | Trigger | Does |
+|---|---|---|
+| `ci.yml` | push / PR | Lint, build, unit tests |
+| `e2e.yml` | push / PR | Postgres + migrations + Playwright |
+| `docker-publish.yml` | `v*` tag | Gated build → `masterhuh/pantryradar` |
+| `deploy.yml` | manual | SSH deploy stub |
+
+If the gate fails, no image is published — the tag can be moved to a fixed commit and
+re-pushed.
+
+---
+
+## Contributing
+
+Issues and pull requests welcome. Before opening a PR:
+
+```bash
+pnpm lint && pnpm build && pnpm test
+```
+
+Conventions: TypeScript strict everywhere · Zod validation at every route boundary ·
+household isolation enforced in the same SQL statement as the lookup · Prettier
+(`semi: true`, double quotes, width 100).
 
 ---
 
 ## License
 
-Private — all rights reserved.
+> [!NOTE]
+> No license has been chosen yet. Under default copyright that means **all rights
+> reserved** — others may view the code, but not legally use, modify, fork, or
+> redistribute it, and "public" contributions can't be accepted cleanly. If this repo is
+> meant to be shared, add a `LICENSE` file (MIT and Apache-2.0 are the usual choices for
+> a self-hosted app like this) and replace this note.
