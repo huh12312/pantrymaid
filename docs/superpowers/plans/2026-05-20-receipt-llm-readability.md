@@ -12,17 +12,18 @@
 
 ## File Map
 
-| File | What changes |
-|---|---|
-| `server/src/lib/categories.ts` | Export `FOOD_CATEGORIES` const |
-| `server/src/lib/openai.ts` | All five Zod schemas get `.describe()`; all five prompt strings revised; cache keys normalized |
-| `server/src/test/integrations/openai.test.ts` | Add prompt-content tests for all five functions |
+| File                                          | What changes                                                                                   |
+| --------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `server/src/lib/categories.ts`                | Export `FOOD_CATEGORIES` const                                                                 |
+| `server/src/lib/openai.ts`                    | All five Zod schemas get `.describe()`; all five prompt strings revised; cache keys normalized |
+| `server/src/test/integrations/openai.test.ts` | Add prompt-content tests for all five functions                                                |
 
 ---
 
 ### Task 1: Export `FOOD_CATEGORIES` from `categories.ts`
 
 **Files:**
+
 - Modify: `server/src/lib/categories.ts`
 - Test: `server/src/test/integrations/openai.test.ts`
 
@@ -141,6 +142,7 @@ git commit -m "feat(server): export FOOD_CATEGORIES; add clearBrandCache/clearNo
 Moving field documentation from inline prose `"Provide: - days: ..."` bullets onto `.describe()` annotations sends them to the model via JSON Schema (the Vercel AI SDK serializes them automatically), and eliminates the duplicate source of truth.
 
 **Files:**
+
 - Modify: `server/src/lib/openai.ts`
 
 - [ ] **Step 1: Write the failing test**
@@ -202,22 +204,36 @@ In `server/src/lib/openai.ts`, replace the five schema definitions with:
 import { FOOD_CATEGORIES } from "./categories";
 
 export const ReceiptLineItemSchema = z.object({
-  description: z.string().describe(
-    "Full human-readable product name with all abbreviations decoded. Include size/weight if printed on the receipt line."
-  ),
-  quantity: z.number().int().positive().describe(
-    "Number of units purchased. Use 1 for weighed items (e.g. produce sold by pound)."
-  ),
-  price: z.number().nullable().describe(
-    "Extended line price as printed (null if not legible). For multi-unit rows this is quantity × unit price."
-  ),
-  confidence: z.number().min(0).max(1).describe(
-    "Confidence in the decoded product name. 0.9+ = clear text fully decoded; 0.6–0.89 = partial abbreviation resolved by context; below 0.6 = significant uncertainty in decoding."
-  ),
+  description: z
+    .string()
+    .describe(
+      "Full human-readable product name with all abbreviations decoded. Include size/weight if printed on the receipt line."
+    ),
+  quantity: z
+    .number()
+    .int()
+    .positive()
+    .describe("Number of units purchased. Use 1 for weighed items (e.g. produce sold by pound)."),
+  price: z
+    .number()
+    .nullable()
+    .describe(
+      "Extended line price as printed (null if not legible). For multi-unit rows this is quantity × unit price."
+    ),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe(
+      "Confidence in the decoded product name. 0.9+ = clear text fully decoded; 0.6–0.89 = partial abbreviation resolved by context; below 0.6 = significant uncertainty in decoding."
+    ),
 });
 
 export const ReceiptParseResultSchema = z.object({
-  storeName: z.string().nullable().describe("Store or vendor name as printed. Null if not visible."),
+  storeName: z
+    .string()
+    .nullable()
+    .describe("Store or vendor name as printed. Null if not visible."),
   lineItems: z.array(ReceiptLineItemSchema),
   total: z.number().nullable().describe("Receipt grand total as printed. Null if not visible."),
 });
@@ -225,39 +241,56 @@ export const ReceiptParseResultSchema = z.object({
 export type ReceiptParseResult = z.infer<typeof ReceiptParseResultSchema>;
 
 export const ExpirationEstimateSchema = z.object({
-  days: z.number().int().positive().describe(
-    "Integer number of days from purchase date until typical expiration. Assume the item is unopened and stored correctly (refrigerate perishables, pantry for dry goods, freezer for frozen)."
-  ),
-  label: z.string().describe(
-    "Human-readable shelf-life label. Use the format '~N unit' — e.g. '~1 week', '~3 months', '~1 year'."
-  ),
-  confidence: z.enum(["high", "medium", "low"]).describe(
-    "high = well-established standard (e.g. fresh milk 7–10 days); medium = common convention with variability; low = rough estimate only."
-  ),
+  days: z
+    .number()
+    .int()
+    .positive()
+    .describe(
+      "Integer number of days from purchase date until typical expiration. Assume the item is unopened and stored correctly (refrigerate perishables, pantry for dry goods, freezer for frozen)."
+    ),
+  label: z
+    .string()
+    .describe(
+      "Human-readable shelf-life label. Use the format '~N unit' — e.g. '~1 week', '~3 months', '~1 year'."
+    ),
+  confidence: z
+    .enum(["high", "medium", "low"])
+    .describe(
+      "high = well-established standard (e.g. fresh milk 7–10 days); medium = common convention with variability; low = rough estimate only."
+    ),
 });
 
 export const BrandExtractionSchema = z.object({
-  brand: z.string().nullable().describe(
-    "Brand name in title case, or null if the product has no distinct brand (e.g. loose commodities like 'Salt', 'Bananas')."
-  ),
+  brand: z
+    .string()
+    .nullable()
+    .describe(
+      "Brand name in title case, or null if the product has no distinct brand (e.g. loose commodities like 'Salt', 'Bananas')."
+    ),
 });
 
 export const NormalizationSchema = z.object({
-  normalized: z.string().describe(
-    "Core food name in lowercase singular form — no brand, size, or descriptors. Compound food names like 'almond milk' or 'olive oil' are preserved as-is."
-  ),
+  normalized: z
+    .string()
+    .describe(
+      "Core food name in lowercase singular form — no brand, size, or descriptors. Compound food names like 'almond milk' or 'olive oil' are preserved as-is."
+    ),
 });
 
 export const SuggestionSchema = z.object({
-  unit: z.string().describe(
-    "Standard unit of measure. Use exactly: 'unit', 'lb', 'oz', 'fl oz', or 'bunch'. No other values."
-  ),
-  category: z.enum(FOOD_CATEGORIES).describe(
-    "Best-matching food category from the allowed list."
-  ),
-  estimatedShelfDays: z.number().int().positive().describe(
-    "Days from purchase until typical expiration, assuming unopened and correctly stored."
-  ),
+  unit: z
+    .string()
+    .describe(
+      "Standard unit of measure. Use exactly: 'unit', 'lb', 'oz', 'fl oz', or 'bunch'. No other values."
+    ),
+  category: z.enum(FOOD_CATEGORIES).describe("Best-matching food category from the allowed list."),
+  estimatedShelfDays: z
+    .number()
+    .int()
+    .positive()
+    .describe(
+      "Days from purchase until typical expiration, assuming unopened and correctly stored."
+    ),
 });
 ```
 
@@ -283,6 +316,7 @@ git commit -m "feat(server): add Zod .describe() to all LLM schemas, enum-constr
 Adds a system prompt with role context, a multi-category abbreviation table, explicit exclusion rules for bag fees and bottle deposits, a weighed-item rule, and moves field specs off the user message (now handled by schema `.describe()`).
 
 **Files:**
+
 - Modify: `server/src/lib/openai.ts`
 - Test: `server/src/test/integrations/openai.test.ts`
 
@@ -321,9 +355,8 @@ describe("parseReceiptImage prompt", () => {
 
     await parseReceiptImage("aGVsbG8=");
 
-    const userText = capturedParams.messages[0].content.find(
-      (c: any) => c.type === "text"
-    )?.text ?? "";
+    const userText =
+      capturedParams.messages[0].content.find((c: any) => c.type === "text")?.text ?? "";
     expect(userText).not.toContain("storeName");
     expect(userText).not.toContain("lineItems");
   });
@@ -399,6 +432,7 @@ git commit -m "feat(server): revise parseReceiptImage prompt — system message,
 Adds a storage-condition assumption to the system message (the single biggest accuracy variable for shelf-life estimation); removes the redundant "Provide:" field list from the user message (now on the schema).
 
 **Files:**
+
 - Modify: `server/src/lib/openai.ts`
 - Test: `server/src/test/integrations/openai.test.ts`
 
@@ -488,6 +522,7 @@ git commit -m "feat(server): revise estimateExpiration prompt — add storage as
 Adds house-brand examples (the dominant failure mode on real receipt data), few-shot classification examples, and a title-case output rule. Moves field spec off the user message.
 
 **Files:**
+
 - Modify: `server/src/lib/openai.ts`
 - Test: `server/src/test/integrations/openai.test.ts`
 
@@ -586,6 +621,7 @@ git commit -m "feat(server): revise extractBrandFromName prompt — house-brand 
 Moves few-shot examples to the system message (cacheable, not re-sent per call); fixes the adjective contradiction by naming the compound-food-name exception explicitly; adds rules for already-normalized inputs and mass nouns.
 
 **Files:**
+
 - Modify: `server/src/lib/openai.ts`
 - Test: `server/src/test/integrations/openai.test.ts`
 
@@ -690,6 +726,7 @@ git commit -m "feat(server): revise normalizeItemName prompt — examples to sys
 Adds a unit conventions table (eliminating "each"/"ea"/"piece" variation), multi-domain few-shot examples, and the shared storage-condition assumption. Removes the inline category list (now enforced by `z.enum(FOOD_CATEGORIES)` on the schema).
 
 **Files:**
+
 - Modify: `server/src/lib/openai.ts`
 - Test: `server/src/test/integrations/openai.test.ts`
 
@@ -814,6 +851,7 @@ git commit -m "feat(server): revise suggestItemDefaults prompt — unit conventi
 Currently `estimateExpiration`, `extractBrandFromName`, `normalizeItemName`, and `suggestItemDefaults` use raw input strings as cache keys. "Milk", "milk", and " Milk " produce three separate LLM calls returning the same result.
 
 **Files:**
+
 - Modify: `server/src/lib/openai.ts`
 - Test: `server/src/test/integrations/openai.test.ts`
 
@@ -866,23 +904,31 @@ Expected: FAIL — callCount is 2 for both tests because cache keys are not norm
 In `server/src/lib/openai.ts`, make the following changes:
 
 In `estimateExpiration`, change:
+
 ```typescript
 const cacheKey = `${productName}|${category ?? ""}`;
 ```
+
 to:
+
 ```typescript
 const cacheKey = `${productName.toLowerCase().trim()}|${(category ?? "").toLowerCase().trim()}`;
 ```
 
 In `extractBrandFromName`, change:
+
 ```typescript
 const cached = brandCache.get(productName);
 ```
+
 and:
+
 ```typescript
 brandCache.set(productName, ...);
 ```
+
 to use a normalized key:
+
 ```typescript
 const cacheKey = productName.toLowerCase().trim();
 const cached = brandCache.get(cacheKey);
@@ -891,14 +937,19 @@ brandCache.set(cacheKey, { brand, expiresAt: Date.now() + CACHE_TTL });
 ```
 
 In `normalizeItemName`, change:
+
 ```typescript
 const cached = normalizeCache.get(name);
 ```
+
 and:
+
 ```typescript
 normalizeCache.set(name, ...);
 ```
+
 to:
+
 ```typescript
 const cacheKey = name.toLowerCase().trim();
 const cached = normalizeCache.get(cacheKey);
@@ -937,17 +988,17 @@ git commit -m "fix(server): normalize LLM cache keys to lowercase+trim across al
 
 **Spec coverage check:**
 
-| Agent finding | Covered by task |
-|---|---|
-| Zod `.describe()` — eliminates Provide: prose | Task 2 |
-| FOOD_CATEGORIES single source of truth | Tasks 1 + 2 |
-| Storage assumption in expiration + defaults | Tasks 4 + 7 |
-| Confidence rubric anchoring | Task 2 (via schema describe) + Task 3 (receipt) |
-| House-brand rule in brand extraction | Task 5 |
-| Few-shot examples to system in brand/normalize/defaults | Tasks 5, 6, 7 |
-| Unit enum constraint | Task 2 (schema) + Task 7 (system prompt table) |
-| Weighed-item rule in receipt parsing | Task 3 |
-| Cache key normalization | Task 8 |
+| Agent finding                                           | Covered by task                                 |
+| ------------------------------------------------------- | ----------------------------------------------- |
+| Zod `.describe()` — eliminates Provide: prose           | Task 2                                          |
+| FOOD_CATEGORIES single source of truth                  | Tasks 1 + 2                                     |
+| Storage assumption in expiration + defaults             | Tasks 4 + 7                                     |
+| Confidence rubric anchoring                             | Task 2 (via schema describe) + Task 3 (receipt) |
+| House-brand rule in brand extraction                    | Task 5                                          |
+| Few-shot examples to system in brand/normalize/defaults | Tasks 5, 6, 7                                   |
+| Unit enum constraint                                    | Task 2 (schema) + Task 7 (system prompt table)  |
+| Weighed-item rule in receipt parsing                    | Task 3                                          |
+| Cache key normalization                                 | Task 8                                          |
 
 **Placeholder scan:** None found — all steps include concrete code.
 

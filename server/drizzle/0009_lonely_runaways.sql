@@ -1,0 +1,1 @@
+ALTER TABLE "household_llm_settings" ADD COLUMN IF NOT EXISTS "vision_model" text;

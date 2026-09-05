@@ -7,6 +7,7 @@ import LoginPage from "./pages/LoginPage";
 import JoinHouseholdPage from "./pages/JoinHouseholdPage";
 import InventoryPage from "./pages/InventoryPage";
 import SettingsPage from "./pages/SettingsPage";
+import MealPlanPage from "./pages/MealPlanPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -54,6 +55,25 @@ function App() {
           element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        {/* Both routes render MealPlanPage so it stays mounted while the recipe
+            sheet opens/closes (plan §5.3) — react-router keeps the same component
+            instance across sibling <Route> matches at the same tree position. */}
+        <Route
+          path="/meal-plan"
+          element={
+            <ProtectedRoute>
+              <MealPlanPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/meal-plan/recipe/:recipeId"
+          element={
+            <ProtectedRoute>
+              <MealPlanPage />
             </ProtectedRoute>
           }
         />

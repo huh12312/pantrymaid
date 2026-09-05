@@ -86,9 +86,7 @@ describe("JoinHouseholdPage — destructive leave-and-join flow", () => {
     await user.type(screen.getByLabelText(/invite code/i), "BADCODE1");
     await user.click(screen.getByRole("button", { name: /continue/i }));
 
-    await waitFor(() =>
-      expect(screen.getByText(/invalid invite code/i)).toBeInTheDocument()
-    );
+    await waitFor(() => expect(screen.getByText(/invalid invite code/i)).toBeInTheDocument());
     // Still on step 1 — no confirmation screen.
     expect(screen.queryByText(/leave current household\?/i)).not.toBeInTheDocument();
   });

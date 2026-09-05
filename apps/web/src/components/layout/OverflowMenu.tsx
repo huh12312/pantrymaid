@@ -1,6 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Camera, Copy, FileText, LogOut, MoreVertical, Moon, Settings, Sun } from "lucide-react";
+import {
+  Camera,
+  CalendarDays,
+  Copy,
+  FileText,
+  LogOut,
+  MoreVertical,
+  Moon,
+  Settings,
+  Sun,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -14,8 +24,8 @@ import { useTheme } from "@/components/layout/ThemeProvider";
 
 export interface OverflowMenuProps {
   inviteCode?: string;
-  onScan: () => void;
-  onReceipt: () => void;
+  onScan?: () => void;
+  onReceipt?: () => void;
   onLogout: () => void;
 }
 
@@ -25,6 +35,7 @@ export function OverflowMenu({ inviteCode, onScan, onReceipt, onLogout }: Overfl
   const [copied, setCopied] = useState(false);
 
   const isDark = theme === "dark";
+  const hasScanOrReceipt = Boolean(onScan || onReceipt);
 
   const handleCopy = async () => {
     if (!inviteCode) return;
@@ -52,16 +63,20 @@ export function OverflowMenu({ inviteCode, onScan, onReceipt, onLogout }: Overfl
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel>Actions</DropdownMenuLabel>
-        <DropdownMenuItem onSelect={() => onScan()}>
-          <Camera className="h-4 w-4" aria-hidden="true" />
-          Scan barcode
-        </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onReceipt()}>
-          <FileText className="h-4 w-4" aria-hidden="true" />
-          Upload receipt
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
+        {hasScanOrReceipt && <DropdownMenuLabel>Actions</DropdownMenuLabel>}
+        {onScan ? (
+          <DropdownMenuItem onSelect={() => onScan()}>
+            <Camera className="h-4 w-4" aria-hidden="true" />
+            Scan barcode
+          </DropdownMenuItem>
+        ) : null}
+        {onReceipt ? (
+          <DropdownMenuItem onSelect={() => onReceipt()}>
+            <FileText className="h-4 w-4" aria-hidden="true" />
+            Upload receipt
+          </DropdownMenuItem>
+        ) : null}
+        {hasScanOrReceipt && <DropdownMenuSeparator />}
         <DropdownMenuItem
           onSelect={(event) => {
             event.preventDefault();
@@ -90,6 +105,10 @@ export function OverflowMenu({ inviteCode, onScan, onReceipt, onLogout }: Overfl
           </DropdownMenuItem>
         ) : null}
         <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={() => navigate("/meal-plan")}>
+          <CalendarDays className="h-4 w-4" aria-hidden="true" />
+          Meal Plan
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => navigate("/settings")}>
           <Settings className="h-4 w-4" aria-hidden="true" />
           Settings

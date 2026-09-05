@@ -21,11 +21,31 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL}
+      # Key-encryption-key for household LLM API keys (meal planning). Must be 32
+      # random bytes, base64-encoded (openssl rand -base64 32), and distinct from
+      # BETTER_AUTH_SECRET. Losing it means every household must re-enter their key.
+      # Still required even for operators who only ever use the container-wide
+      # LLM_PROVIDER/*_API_KEY default below — it gates the per-household override
+      # path (Settings), not the env-key path.
+      MEAL_PLAN_KEK: ${MEAL_PLAN_KEK}
+      # Set only during KEK rotation — see .env.example.
+      MEAL_PLAN_KEK_PREVIOUS: ${MEAL_PLAN_KEK_PREVIOUS}
+      # LLM_PROVIDER/LLM_MODEL + the matching *_API_KEY below are a CONTAINER-WIDE
+      # DEFAULT, shared by every household on this server. A household that saves its
+      # own provider/model/key in Settings always overrides this default; households
+      # that never do fall back to it (meal-planning §4.5 resolution order: household
+      # key -> this env key for the household's resolved provider -> no_api_key). The
+      # env key is read fresh from process env on every generation — it is never
+      # written into the database and never exposed to any household (they only ever
+      # see their OWN key's last 4 characters via GET /api/settings/llm, never this
+      # one's). Meal planning only recognizes openai/anthropic/openrouter for this
+      # fallback — groq/ollama below are receipt-parsing-only.
       LLM_PROVIDER: ${LLM_PROVIDER}
       LLM_MODEL: ${LLM_MODEL}
       LLM_VISION_MODEL: ${LLM_VISION_MODEL}
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
       GROQ_API_KEY: ${GROQ_API_KEY}
       KROGER_CLIENT_ID: ${KROGER_CLIENT_ID}
       KROGER_CLIENT_SECRET: ${KROGER_CLIENT_SECRET}

@@ -198,9 +198,8 @@ describe("parseReceiptImage prompt", () => {
 
     await parseReceiptImage("aGVsbG8=");
 
-    const userText = capturedParams.messages[0].content.find(
-      (c: any) => c.type === "text"
-    )?.text ?? "";
+    const userText =
+      capturedParams.messages[0].content.find((c: any) => c.type === "text")?.text ?? "";
     expect(userText).not.toContain("storeName");
     expect(userText).not.toContain("lineItems");
   });

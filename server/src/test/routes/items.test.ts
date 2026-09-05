@@ -1,9 +1,17 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
-import { setupTestDb, teardownTestDb, clearTables, testDb } from "../setup";
+import {
+  setupTestDb,
+  teardownTestDb,
+  clearTables,
+  testDb,
+  createTestSession,
+  createAuthUserRow,
+} from "../setup";
 import { factories } from "../factories";
 import { households, users, items } from "../../db/schema";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import itemsRoute from "../../routes/items";
 
@@ -11,7 +19,7 @@ describe("Items API Routes", () => {
   let app: Hono;
   let testHousehold: ReturnType<typeof factories.household>;
   let testUser: ReturnType<typeof factories.user>;
-  let authToken: string;
+  let authCookie: string;
 
   beforeAll(async () => {
     await setupTestDb();
@@ -24,15 +32,15 @@ describe("Items API Routes", () => {
   beforeEach(async () => {
     await clearTables();
 
-    // Create test household and user
+    // Create test household and a real Better Auth session for the primary user
     testHousehold = factories.household();
-    testUser = factories.user(testHousehold.id);
+    const session = await createTestSession();
+    testUser = factories.user(testHousehold.id, { id: session.id, displayName: session.name });
 
     await testDb.insert(households).values(testHousehold);
     await testDb.insert(users).values(testUser);
 
-    // Mock auth token (in real implementation, this would be a JWT)
-    authToken = `Bearer mock-token-${testUser.id}`;
+    authCookie = session.cookie;
 
     // Setup app with routes
     app = new Hono();
@@ -58,7 +66,7 @@ describe("Items API Routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify(newItem),
       });
@@ -80,10 +88,7 @@ describe("Items API Routes", () => {
       expect(json.data.updatedAt).toBeDefined();
 
       // Verify item was inserted into database
-      const [insertedItem] = await testDb
-        .select()
-        .from(items)
-        .where((t) => t.id === json.data.id);
+      const [insertedItem] = await testDb.select().from(items).where(eq(items.id, json.data.id));
 
       expect(insertedItem).toBeDefined();
       expect(insertedItem.name).toBe("Whole Milk");
@@ -116,7 +121,7 @@ describe("Items API Routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify(invalidItem),
       });
@@ -134,7 +139,7 @@ describe("Items API Routes", () => {
       const response = await app.request("/items", {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -167,7 +172,7 @@ describe("Items API Routes", () => {
       const response = await app.request("/items?location=fridge", {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -184,8 +189,9 @@ describe("Items API Routes", () => {
     it("should not return items from other households", async () => {
       // Create another household with items
       const otherHousehold = factories.household();
-      const otherUser = factories.user(otherHousehold.id);
       await testDb.insert(households).values(otherHousehold);
+      const otherAuthUser = await createAuthUserRow();
+      const otherUser = factories.user(otherHousehold.id, { id: otherAuthUser.id });
       await testDb.insert(users).values(otherUser);
       await testDb.insert(items).values(factories.items(otherHousehold.id, otherUser.id, 3));
 
@@ -195,7 +201,7 @@ describe("Items API Routes", () => {
       const response = await app.request("/items", {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -214,7 +220,7 @@ describe("Items API Routes", () => {
       const response = await app.request("/items?page=2&pageSize=10", {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -235,7 +241,7 @@ describe("Items API Routes", () => {
       const response = await app.request(`/items/${testItem.id}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -253,7 +259,7 @@ describe("Items API Routes", () => {
       const response = await app.request(`/items/${fakeId}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -263,10 +269,11 @@ describe("Items API Routes", () => {
     it("should prevent IDOR - cannot access items from other households", async () => {
       // Create another household with an item
       const otherHousehold = factories.household();
-      const otherUser = factories.user(otherHousehold.id);
+      await testDb.insert(households).values(otherHousehold);
+      const otherAuthUser = await createAuthUserRow();
+      const otherUser = factories.user(otherHousehold.id, { id: otherAuthUser.id });
       const otherItem = factories.item(otherHousehold.id, otherUser.id);
 
-      await testDb.insert(households).values(otherHousehold);
       await testDb.insert(users).values(otherUser);
       await testDb.insert(items).values(otherItem);
 
@@ -274,7 +281,7 @@ describe("Items API Routes", () => {
       const response = await app.request(`/items/${otherItem.id}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -297,7 +304,7 @@ describe("Items API Routes", () => {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify(updates),
       });
@@ -312,10 +319,7 @@ describe("Items API Routes", () => {
       expect(json.data.location).toBe("freezer");
 
       // Verify database was updated
-      const [updatedItem] = await testDb
-        .select()
-        .from(items)
-        .where((t) => t.id === testItem.id);
+      const [updatedItem] = await testDb.select().from(items).where(eq(items.id, testItem.id));
 
       expect(updatedItem.name).toBe("Updated Name");
     });
@@ -327,7 +331,7 @@ describe("Items API Routes", () => {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify({ name: "Updated" }),
       });
@@ -338,10 +342,11 @@ describe("Items API Routes", () => {
     it("should prevent IDOR - cannot update items from other households", async () => {
       // Create another household with an item
       const otherHousehold = factories.household();
-      const otherUser = factories.user(otherHousehold.id);
+      await testDb.insert(households).values(otherHousehold);
+      const otherAuthUser = await createAuthUserRow();
+      const otherUser = factories.user(otherHousehold.id, { id: otherAuthUser.id });
       const otherItem = factories.item(otherHousehold.id, otherUser.id);
 
-      await testDb.insert(households).values(otherHousehold);
       await testDb.insert(users).values(otherUser);
       await testDb.insert(items).values(otherItem);
 
@@ -349,7 +354,7 @@ describe("Items API Routes", () => {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify({ name: "Hacked!" }),
       });
@@ -357,34 +362,37 @@ describe("Items API Routes", () => {
       expect(response.status).toBe(404);
 
       // Verify item was NOT updated
-      const [unchangedItem] = await testDb
-        .select()
-        .from(items)
-        .where((t) => t.id === otherItem.id);
+      const [unchangedItem] = await testDb.select().from(items).where(eq(items.id, otherItem.id));
 
       expect(unchangedItem.name).toBe(otherItem.name);
     });
   });
 
   describe("DELETE /items/:id", () => {
-    it("should delete item and return 204", async () => {
+    it("should delete item and return 200 with the success envelope", async () => {
+      // Every route in this API replies with the { success, data, error } envelope
+      // (CLAUDE.md "API Design"), including deletes — a real 204 response cannot carry
+      // a body at all per HTTP semantics, so items.ts (and every other DELETE handler
+      // in this codebase, e.g. shopping-list.ts) intentionally returns 200 with
+      // `data: null` rather than 204. The previous 204 expectation here predates that
+      // convention and never matched production behavior.
       const testItem = factories.item(testHousehold.id, testUser.id);
       await testDb.insert(items).values(testItem);
 
       const response = await app.request(`/items/${testItem.id}`, {
         method: "DELETE",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
-      expect(response.status).toBe(204);
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.success).toBe(true);
+      expect(json.data).toBeNull();
 
       // Verify item was deleted
-      const [deletedItem] = await testDb
-        .select()
-        .from(items)
-        .where((t) => t.id === testItem.id);
+      const [deletedItem] = await testDb.select().from(items).where(eq(items.id, testItem.id));
 
       expect(deletedItem).toBeUndefined();
     });
@@ -395,7 +403,7 @@ describe("Items API Routes", () => {
       const response = await app.request(`/items/${fakeId}`, {
         method: "DELETE",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -405,27 +413,25 @@ describe("Items API Routes", () => {
     it("should prevent IDOR - cannot delete items from other households", async () => {
       // Create another household with an item
       const otherHousehold = factories.household();
-      const otherUser = factories.user(otherHousehold.id);
+      await testDb.insert(households).values(otherHousehold);
+      const otherAuthUser = await createAuthUserRow();
+      const otherUser = factories.user(otherHousehold.id, { id: otherAuthUser.id });
       const otherItem = factories.item(otherHousehold.id, otherUser.id);
 
-      await testDb.insert(households).values(otherHousehold);
       await testDb.insert(users).values(otherUser);
       await testDb.insert(items).values(otherItem);
 
       const response = await app.request(`/items/${otherItem.id}`, {
         method: "DELETE",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
       expect(response.status).toBe(404);
 
       // Verify item was NOT deleted
-      const [unchangedItem] = await testDb
-        .select()
-        .from(items)
-        .where((t) => t.id === otherItem.id);
+      const [unchangedItem] = await testDb.select().from(items).where(eq(items.id, otherItem.id));
 
       expect(unchangedItem).toBeDefined();
     });

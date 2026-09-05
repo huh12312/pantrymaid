@@ -50,6 +50,21 @@ const limiter = new RateLimiter();
 setInterval(() => limiter.cleanup(), 5 * 60 * 1000);
 
 /**
+ * Checks (and records) a rate-limit hit for an arbitrary caller-supplied key.
+ *
+ * Unlike `rateLimitMiddleware` below — which keys on the raw `x-forwarded-for` header
+ * and is therefore spoofable by anyone who controls a prefix of a header Caddy only
+ * ever *appends* to — callers protecting a paid/abusable resource (e.g. LLM
+ * generation) MUST build `key` from an authenticated, server-trusted identifier such
+ * as `householdId`/`userId` from the session, never from a request header (plan
+ * §6.5). Returns `true` if the request is allowed (and records it), `false` if the
+ * limit has been reached.
+ */
+export function checkRateLimit(key: string, limit: number, windowMs: number): boolean {
+  return limiter.check(key, limit, windowMs);
+}
+
+/**
  * Rate limiting middleware factory
  */
 export function rateLimitMiddleware(options: { limit: number; windowMs: number }) {

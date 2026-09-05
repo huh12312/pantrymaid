@@ -29,9 +29,12 @@ import { ReceiptUpload } from "@/components/inventory/ReceiptUpload";
 import { ReceiptReviewSheet } from "@/components/inventory/ReceiptReviewSheet";
 import { ShoppingListPanel } from "@/components/inventory/ShoppingListPanel";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
-import { Sidebar } from "@/components/layout/Sidebar";
-import { MobileTopBar } from "@/components/layout/MobileTopBar";
-import { SegmentedTabs } from "@/components/layout/SegmentedTabs";
+import { AppShell } from "@/components/layout/AppShell";
+import {
+  SegmentedTabs,
+  INVENTORY_LOCATION_TABS,
+  INVENTORY_LOCATION_ARIA_LABEL,
+} from "@/components/layout/SegmentedTabs";
 import { MobileFAB } from "@/components/layout/MobileFAB";
 import {
   api,
@@ -280,40 +283,39 @@ export default function InventoryPage() {
   );
 
   return (
-    <div className="flex min-h-dvh flex-col bg-background md:h-screen md:flex-row md:overflow-hidden">
-      <div className="hidden md:flex">
-        <Sidebar
-          user={user}
-          onLogout={handleLogout}
-          totalItems={items.length}
-          expiringCount={expiringCount}
-          expiredCount={expiredCount}
-          activeSection={activeSection}
-          onSectionChange={setActiveSection}
-          pantryCount={pantryItems.length}
-          fridgeCount={fridgeItems.length}
-          freezerCount={freezerItems.length}
-          inviteCode={household?.inviteCode}
-          reorderCount={shoppingListItems.length}
-          onReorderClick={() => setReorderOpen(true)}
-        />
-      </div>
-
-      <div className="flex flex-1 flex-col md:overflow-hidden">
-        <MobileTopBar
-          inviteCode={household?.inviteCode}
-          onSearchToggle={() => {
+    <>
+      <AppShell
+        sidebarProps={{
+          user,
+          onLogout: handleLogout,
+          totalItems: items.length,
+          expiringCount,
+          expiredCount,
+          activeSection,
+          onSectionChange: setActiveSection,
+          pantryCount: pantryItems.length,
+          fridgeCount: fridgeItems.length,
+          freezerCount: freezerItems.length,
+          inviteCode: household?.inviteCode,
+          reorderCount: shoppingListItems.length,
+          onReorderClick: () => setReorderOpen(true),
+          activeRoute: "inventory",
+        }}
+        mobileTopBarProps={{
+          inviteCode: household?.inviteCode,
+          onSearchToggle: () => {
             if (mobileSearchOpen) setSearchQuery("");
             setMobileSearchOpen((v) => !v);
-          }}
-          onAdd={() => handleAddItem()}
-          onScan={() => {
+          },
+          onAdd: () => handleAddItem(),
+          onScan: () => {
             setDefaultLocation(undefined);
             setScannerOpen(true);
-          }}
-          onReceipt={() => setReceiptUploadOpen(true)}
-          onLogout={handleLogout}
-        />
+          },
+          onReceipt: () => setReceiptUploadOpen(true),
+          onLogout: handleLogout,
+        }}
+      >
         {errorNotice && (
           <div
             role="alert"
@@ -342,6 +344,8 @@ export default function InventoryPage() {
           <SegmentedTabs
             value={activeSection}
             onChange={setActiveSection}
+            options={INVENTORY_LOCATION_TABS}
+            ariaLabel={INVENTORY_LOCATION_ARIA_LABEL}
             counts={{
               all: items.length,
               pantry: pantryItems.length,
@@ -545,7 +549,7 @@ export default function InventoryPage() {
           )}
         </main>
         <MobileFAB onClick={() => handleAddItem()} />
-      </div>
+      </AppShell>
 
       {/* Barcode lookup feedback — bridges the gap between scanner close and dialog open */}
       {isLookingUpBarcode && (
@@ -650,6 +654,6 @@ export default function InventoryPage() {
           isSubmitting={bulkAddReceiptItemsMutation.isPending}
         />
       )}
-    </div>
+    </>
   );
 }

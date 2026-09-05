@@ -92,7 +92,8 @@ items.post("/", zValidator("json", createItemSchema), async (c) => {
       created.name,
       created.barcodeUpc ?? null,
       created.imageUrl ?? null,
-      created.category ?? null
+      created.category ?? null,
+      user.householdId
     ).catch((err) => console.error("Image resolve failed for item", created.id, err));
 
     return c.json(
@@ -314,8 +315,9 @@ items.delete("/:id", async (c) => {
 // POST /items/suggest — AI-powered field suggestions for a named item
 items.post("/suggest", zValidator("json", z.object({ name: z.string().min(1) })), async (c) => {
   try {
+    const user = getUser(c);
     const { name } = c.req.valid("json");
-    const suggestion = await suggestItemDefaults(name);
+    const suggestion = await suggestItemDefaults(name, user.householdId);
     return c.json({ success: true, data: suggestion });
   } catch (error) {
     console.error("Error suggesting item defaults:", error);

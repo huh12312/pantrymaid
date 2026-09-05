@@ -12,15 +12,16 @@ tags: [feature, frontend, expiry-date]
 > shipped. Quick-chips and the field reorder were NOT built — see "Not done".
 >
 > Two deviations found during review, both deliberate:
+>
 > - **Submit is blocked on unresolvable text**, contrary to the "never block"
->   line below. Short forms only resolve on blur, and Enter submits *without*
+>   line below. Short forms only resolve on blur, and Enter submits _without_
 >   blurring — so `0826` + Enter silently saved no date (create) or wiped the
 >   existing one (edit). `DateInput` now exposes `resolvePending()` via a ref;
 >   `handleSubmit` force-resolves before building the payload and blocks with an
 >   inline error only when the text genuinely cannot resolve. An empty field
 >   still submits fine, so the field stays optional.
 > - **Quick-chips, the `expirationEstimated` badge, receipt-sheet reuse, and the
->   field reorder were not built.** The estimated flag is now *persisted*
+>   field reorder were not built.** The estimated flag is now _persisted_
 >   correctly, but nothing surfaces it in the UI yet.
 
 # Typed numeric entry for expiry dates
@@ -39,9 +40,9 @@ masked `<input type="text" inputMode="numeric">`** over three MM/DD/YYYY segment
 The reasons stack rather than overlap:
 
 - **Accessibility surface.** Segments require `role="group"` + per-segment `aria-label`
-  + a visually-hidden `<legend>`, and iOS VoiceOver has a known bug where it does not
-  announce the group label when navigating into a child segment. A single input keeps
-  the existing 1:1 `<Label htmlFor="expirationDate">` binding untouched.
+  - a visually-hidden `<legend>`, and iOS VoiceOver has a known bug where it does not
+    announce the group label when navigating into a child segment. A single input keeps
+    the existing 1:1 `<Label htmlFor="expirationDate">` binding untouched.
 - **`e2e/a11y.spec.ts:37-53`** runs axe against the opened dialog and asserts
   `violations).toEqual([])`. Three segments with one label = an axe `label` violation =
   red CI. A single input is safe by construction.
@@ -64,7 +65,7 @@ do `.toISOString().split("T")[0]` — so no call site outside the field itself c
 
 Three problems the implementer must get right:
 
-**1. Caret placement.** Saving and restoring `selectionStart` as a *character* index is
+**1. Caret placement.** Saving and restoring `selectionStart` as a _character_ index is
 the standard wrong answer: inserting a `/` shifts every character after it. Map by
 **digit index** instead — count digits before the caret, reformat, then walk the formatted
 string to find the offset after the Nth digit.
@@ -83,7 +84,7 @@ Fix with a `lastEmitted` ref — only resync when `value !== lastEmitted.current
 
 **3. Validity.** Round-trip validate via `Date.UTC(y, m-1, d)` and read back
 `getUTC*` — JS silently rolls `02/30` forward otherwise. Build the canonical string by
-**string concatenation** of the already-validated parts. Do *not* add a third
+**string concatenation** of the already-validated parts. Do _not_ add a third
 `.toISOString()` call site; see the timezone bug below.
 
 While the user is mid-typing, the component emits `""` upward and keeps the partial text
@@ -139,9 +140,10 @@ inside one component.
 this change. Add `timezoneId: "America/New_York"` to the shared `use` block.
 
 Pin **two** zones in Vitest, because the two bug directions are mutually invisible:
+
 - `America/New_York` (UTC-4) catches `new Date("2026-08-16")` parsing as UTC midnight and
   displaying a day early — the bug `ItemCard.tsx:32-34` hand-patches with `+ "T00:00:00"`.
-- `Asia/Tokyo` (UTC+9) catches `.toISOString().split("T")[0]` rolling a date *forward*.
+- `Asia/Tokyo` (UTC+9) catches `.toISOString().split("T")[0]` rolling a date _forward_.
 
 Set `TZ` at the process level in the `test` script, not in `setup.ts` — mutating
 `process.env.TZ` after V8's `Date`/`Intl` internals initialize is unreliable.
@@ -213,12 +215,12 @@ only barcode scanning and product search. So this is net-new coverage, not repai
 
 ### Existing tests that break
 
-| Test | What happens | Fix |
-|---|---|---|
+| Test                                                                    | What happens                                                                                                                                                                                                                                                              | Fix                                                                                                                                                                                           |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `e2e/inventory.spec.ts:71` `page.fill("#expirationDate", "2026-04-15")` | **Silent false negative** — `fill()` still succeeds on a text input, but the mask strips `-` and reads `20260415` as month `20` → invalid → emits `""`. The test stays green while no longer testing expiry, because the assertion at `:76-77` only checks the item name. | `pressSequentially("04152026")`. Add the missing assertions: displayed value `04/15/2026`, and that the expiry renders on the resulting card. Runs under both `chromium` and `Mobile Chrome`. |
-| `e2e/a11y.spec.ts:37-53` | Safe under the single-input design; would fail hard under segments. | No change — but this is the test that vetoes the segmented alternative. |
-| `e2e/fixtures.ts:35-41` | Fixture unchanged; only its consumer changes. | None |
-| `InventoryPage.test.tsx`, `ItemCard.test.tsx` | Set `expirationDate: null` only; never touch the input. | None |
+| `e2e/a11y.spec.ts:37-53`                                                | Safe under the single-input design; would fail hard under segments.                                                                                                                                                                                                       | No change — but this is the test that vetoes the segmented alternative.                                                                                                                       |
+| `e2e/fixtures.ts:35-41`                                                 | Fixture unchanged; only its consumer changes.                                                                                                                                                                                                                             | None                                                                                                                                                                                          |
+| `InventoryPage.test.tsx`, `ItemCard.test.tsx`                           | Set `expirationDate: null` only; never touch the input.                                                                                                                                                                                                                   | None                                                                                                                                                                                          |
 
 ### New tests — `apps/web/src/test/components/DateInput.test.tsx`
 
@@ -262,6 +264,7 @@ branch-coverage budget honest.
 These change the mask and parser and are not mine to pick:
 
 **A. Accepted formats.** Packaging prints `08/16/2026`, `08/26`, and `AUG 2026`.
+
 - (i) 8 digits only — simplest, tightest tests
 - (ii) 8 digits + 6-digit `MMDDYY`
 - (iii) the above + month-only `MMYY` → auto-completes to the **last** day of that month
@@ -279,8 +282,9 @@ lines, preserves the OS picker for browsing and for anyone who prefers it. **Rec
 — the a11y analysis notes no custom control matches the OS picker on mobile.
 
 **C. Optional extras**, each independently droppable:
+
 - Relative quick-chips (`+1wk` / `+1mo` / `+3mo` / `+1yr`) — biggest speed win for items
-  with no printed date; chip math relative to *today*, and a chip tap clears the estimated flag
+  with no printed date; chip math relative to _today_, and a chip tap clears the estimated flag
 - Live "expires in 3 weeks" hint — cheap, catches a mistyped year. Use the same 7-day
   threshold as `ItemCard.tsx:38-40` or the form and card will disagree
 - Past dates: warn, never block. `isExpired` exists because users log already-expired

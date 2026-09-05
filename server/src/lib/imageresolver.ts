@@ -319,7 +319,8 @@ export async function resolveImageForItem(
   name: string,
   _barcodeUpc: string | null,
   existingImageUrl: string | null,
-  existingCategory: string | null
+  existingCategory: string | null,
+  householdId?: string
 ): Promise<void> {
   const patch: { imageUrl?: string; category?: string } = {};
 
@@ -339,7 +340,7 @@ export async function resolveImageForItem(
       patch.imageUrl = wikiUrl;
     } else {
       // Step 2: LLM normalization → retry seed map → Wikipedia
-      const normalized = await normalizeItemName(name);
+      const normalized = await normalizeItemName(name, householdId);
       let resolvedUrl: string | null = null;
 
       if (normalized !== name) {

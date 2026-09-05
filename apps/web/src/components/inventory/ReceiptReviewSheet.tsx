@@ -40,16 +40,10 @@ interface ReceiptReviewSheetProps {
 function ConfidenceBadge({ confidence }: { confidence: number }) {
   if (confidence >= 0.8) return null;
   if (confidence >= 0.5) {
-    return (
-      <span className="text-xs px-1.5 py-0.5 rounded bg-warning/15 text-warning">
-        review
-      </span>
-    );
+    return <span className="text-xs px-1.5 py-0.5 rounded bg-warning/15 text-warning">review</span>;
   }
   return (
-    <span className="text-xs px-1.5 py-0.5 rounded bg-expired/15 text-expired">
-      low confidence
-    </span>
+    <span className="text-xs px-1.5 py-0.5 rounded bg-expired/15 text-expired">low confidence</span>
   );
 }
 
@@ -232,7 +226,11 @@ export function ReceiptReviewSheet({
                 </div>
               </div>
               {item.imageUrl && (
-                <ProductImage src={item.imageUrl} alt={item.name} className="h-12 w-12 shrink-0 rounded" />
+                <ProductImage
+                  src={item.imageUrl}
+                  alt={item.name}
+                  className="h-12 w-12 shrink-0 rounded"
+                />
               )}
             </div>
           ))}

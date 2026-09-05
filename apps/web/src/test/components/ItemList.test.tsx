@@ -4,7 +4,9 @@ import userEvent from "@testing-library/user-event";
 import { ItemList } from "@/components/inventory/ItemList";
 import type { InventoryItem } from "@/lib/api";
 
-function makeItem(overrides: Partial<InventoryItem> & Pick<InventoryItem, "id" | "name">): InventoryItem {
+function makeItem(
+  overrides: Partial<InventoryItem> & Pick<InventoryItem, "id" | "name">
+): InventoryItem {
   return {
     brand: null,
     quantity: 3,

@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 export interface MobileTopBarProps {
   inviteCode?: string;
   onSearchToggle?: () => void;
-  onAdd: () => void;
-  onScan: () => void;
-  onReceipt: () => void;
+  onAdd?: () => void;
+  onScan?: () => void;
+  onReceipt?: () => void;
   onLogout: () => void;
   className?: string;
 }
@@ -46,16 +46,18 @@ export function MobileTopBar({
           <Search className="h-5 w-5" aria-hidden="true" />
         </Button>
       ) : null}
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        aria-label="Add item"
-        onClick={onAdd}
-        className="h-10 w-10"
-      >
-        <Plus className="h-5 w-5" aria-hidden="true" />
-      </Button>
+      {onAdd ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="Add item"
+          onClick={onAdd}
+          className="h-10 w-10"
+        >
+          <Plus className="h-5 w-5" aria-hidden="true" />
+        </Button>
+      ) : null}
       <OverflowMenu
         inviteCode={inviteCode}
         onScan={onScan}

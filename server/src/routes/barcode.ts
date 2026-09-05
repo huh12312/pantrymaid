@@ -62,12 +62,16 @@ barcode.get("/:upc", async (c) => {
 
     // Run expiration estimation and brand extraction in parallel
     const [expirationEstimate, inferredBrand] = await Promise.all([
-      estimateExpiration(productName, normalizedCategory || undefined).catch((err) => {
-        console.error("Error estimating expiration:", err);
-        return null;
-      }),
+      estimateExpiration(productName, normalizedCategory || undefined, user.householdId).catch(
+        (err) => {
+          console.error("Error estimating expiration:", err);
+          return null;
+        }
+      ),
       // Only call brand extraction if OFF didn't supply one
-      !product.brand ? extractBrandFromName(productName).catch(() => null) : Promise.resolve(null),
+      !product.brand
+        ? extractBrandFromName(productName, user.householdId).catch(() => null)
+        : Promise.resolve(null),
     ]);
 
     const result = {

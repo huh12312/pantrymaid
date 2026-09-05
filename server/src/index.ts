@@ -19,6 +19,9 @@ import shoppingList from "./routes/shopping-list";
 import products from "./routes/products";
 import stores from "./routes/stores";
 import housesRoute from "./routes/houses";
+import settings from "./routes/settings";
+import mealPlans from "./routes/meal-plans";
+import { sweepStalePlans } from "./lib/mealplan/generate";
 
 const app = new Hono();
 
@@ -169,6 +172,8 @@ app.route("/api/shopping-list", shoppingList);
 app.route("/api/products", products);
 app.route("/api/stores", stores);
 app.route("/api/houses", housesRoute);
+app.route("/api/settings", settings);
+app.route("/api/meal-plans", mealPlans);
 
 // Serve web app static files — API routes above take precedence
 app.use("/*", serveStatic({ root: "./public" }));
@@ -186,6 +191,18 @@ app.notFound((c) => {
   );
 });
 
+// Headers that must never be written to logs (auth credentials)
+const REDACTED_HEADERS = new Set(["authorization", "cookie"]);
+
+function redactHeaders(headers: Headers): Record<string, string> {
+  return Object.fromEntries(
+    Array.from(headers.entries()).map(([key, value]) => [
+      key,
+      REDACTED_HEADERS.has(key.toLowerCase()) ? "[redacted]" : value,
+    ])
+  );
+}
+
 // Error handler
 app.onError((err, c) => {
   console.error("App error:", {
@@ -193,12 +210,12 @@ app.onError((err, c) => {
     stack: err.stack,
     path: c.req.path,
     method: c.req.method,
-    headers: Object.fromEntries(c.req.raw.headers),
+    headers: redactHeaders(c.req.raw.headers),
   });
   return c.json(
     {
       success: false,
-      error: process.env.NODE_ENV === "production" ? "Internal server error" : err.message,
+      error: "Internal server error",
     },
     500
   );
@@ -214,6 +231,23 @@ try {
   console.error("✗ Migration failed:", err);
   process.exit(1);
 }
+
+// Crash sweep (plan §4.1): a single Bun process means in-flight generation jobs die
+// with the process, with no queue to resume them. Any `generating_*` meal plan whose
+// heartbeat has gone stale is failed with error_code='interrupted' — at boot, and
+// again every 60s so a mid-life crash doesn't leave a household's `one_active` slot
+// wedged forever.
+try {
+  const sweptAtBoot = await sweepStalePlans();
+  if (sweptAtBoot > 0) {
+    console.log(`⏳ Swept ${sweptAtBoot} stale meal plan(s) at boot`);
+  }
+} catch (err) {
+  console.error("Meal plan boot sweep failed:", err);
+}
+setInterval(() => {
+  sweepStalePlans().catch((err) => console.error("Meal plan sweep failed:", err));
+}, 60 * 1000);
 
 const port = parseInt(process.env.PORT || "3000");
 

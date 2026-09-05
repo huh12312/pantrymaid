@@ -1,0 +1,1 @@
+ALTER TABLE "meal_plans" ADD COLUMN IF NOT EXISTS "error_retry_after_seconds" integer;

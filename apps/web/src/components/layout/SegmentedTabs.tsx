@@ -3,29 +3,46 @@ import { cn } from "@/lib/utils";
 
 export type Section = "all" | "pantry" | "fridge" | "freezer";
 
-const TABS: { value: Section; label: string }[] = [
+export interface SegmentedTabsOption<T extends string> {
+  value: T;
+  label: string;
+}
+
+export interface SegmentedTabsProps<T extends string> {
+  value: T;
+  onChange: (value: T) => void;
+  options: SegmentedTabsOption<T>[];
+  ariaLabel: string;
+  counts?: Partial<Record<T, number>>;
+  className?: string;
+}
+
+/** Default options/label for the inventory location tabs (Inventory usage). */
+export const INVENTORY_LOCATION_TABS: SegmentedTabsOption<Section>[] = [
   { value: "all", label: "All" },
   { value: "pantry", label: "Pantry" },
   { value: "fridge", label: "Fridge" },
   { value: "freezer", label: "Freezer" },
 ];
 
-export interface SegmentedTabsProps {
-  value: Section;
-  onChange: (value: Section) => void;
-  counts?: Partial<Record<Section, number>>;
-  className?: string;
-}
+export const INVENTORY_LOCATION_ARIA_LABEL = "Inventory location";
 
-export function SegmentedTabs({ value, onChange, counts, className }: SegmentedTabsProps) {
+export function SegmentedTabs<T extends string>({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+  counts,
+  className,
+}: SegmentedTabsProps<T>) {
   const tabRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
     event.preventDefault();
     const direction = event.key === "ArrowRight" ? 1 : -1;
-    const next = (index + direction + TABS.length) % TABS.length;
-    const nextTab = TABS[next];
+    const next = (index + direction + options.length) % options.length;
+    const nextTab = options[next];
     if (!nextTab) return;
     tabRefs.current[next]?.focus();
     onChange(nextTab.value);
@@ -34,10 +51,10 @@ export function SegmentedTabs({ value, onChange, counts, className }: SegmentedT
   return (
     <div
       role="tablist"
-      aria-label="Inventory location"
+      aria-label={ariaLabel}
       className={cn("flex w-full items-center gap-1 rounded-full bg-muted p-1", className)}
     >
-      {TABS.map((tab, index) => {
+      {options.map((tab, index) => {
         const selected = tab.value === value;
         const count = counts?.[tab.value];
         return (

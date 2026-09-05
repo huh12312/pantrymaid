@@ -30,12 +30,7 @@ export function ProductImage({ src, alt, className, iconClassName }: ProductImag
   const showImage = Boolean(src) && !errored;
 
   return (
-    <div
-      className={cn(
-        "flex items-center justify-center overflow-hidden bg-secondary",
-        className
-      )}
-    >
+    <div className={cn("flex items-center justify-center overflow-hidden bg-secondary", className)}>
       {showImage ? (
         <img
           src={src as string}
@@ -44,7 +39,10 @@ export function ProductImage({ src, alt, className, iconClassName }: ProductImag
           onError={() => setErrored(true)}
         />
       ) : (
-        <Package className={cn("h-5 w-5 text-muted-foreground", iconClassName)} aria-hidden="true" />
+        <Package
+          className={cn("h-5 w-5 text-muted-foreground", iconClassName)}
+          aria-hidden="true"
+        />
       )}
     </div>
   );

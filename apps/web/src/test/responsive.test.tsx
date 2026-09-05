@@ -4,7 +4,11 @@ import { MemoryRouter } from "react-router-dom";
 import { setViewportWidth } from "./utils/matchMedia";
 import { MobileTopBar } from "@/components/layout/MobileTopBar";
 import { MobileFAB } from "@/components/layout/MobileFAB";
-import { SegmentedTabs } from "@/components/layout/SegmentedTabs";
+import {
+  SegmentedTabs,
+  INVENTORY_LOCATION_TABS,
+  INVENTORY_LOCATION_ARIA_LABEL,
+} from "@/components/layout/SegmentedTabs";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ThemeProvider } from "@/components/layout/ThemeProvider";
 
@@ -42,7 +46,14 @@ describe("responsive chrome at mobile viewport (360px)", () => {
 
   it("SegmentedTabs initial focus is the active tab", () => {
     setViewportWidth(360);
-    render(<SegmentedTabs value="pantry" onChange={noop} />);
+    render(
+      <SegmentedTabs
+        value="pantry"
+        onChange={noop}
+        options={INVENTORY_LOCATION_TABS}
+        ariaLabel={INVENTORY_LOCATION_ARIA_LABEL}
+      />
+    );
     const pantry = screen.getByRole("tab", { name: /pantry/i });
     expect(pantry).toHaveAttribute("tabindex", "0");
     const all = screen.getByRole("tab", { name: /all/i });
@@ -98,7 +109,14 @@ describe("Sheet variant selection by side prop", () => {
 describe("SegmentedTabs keyboard nav", () => {
   it("ArrowLeft from first tab wraps to last", async () => {
     const onChange = vi.fn();
-    render(<SegmentedTabs value="all" onChange={onChange} />);
+    render(
+      <SegmentedTabs
+        value="all"
+        onChange={onChange}
+        options={INVENTORY_LOCATION_TABS}
+        ariaLabel={INVENTORY_LOCATION_ARIA_LABEL}
+      />
+    );
     const allTab = screen.getByRole("tab", { name: /all/i });
     allTab.focus();
     const userEvent = (await import("@testing-library/user-event")).default;

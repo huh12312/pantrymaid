@@ -56,7 +56,7 @@ receipt.post(
       // Step 1: Parse receipt image with LLM vision (OCR + name decoding in one pass)
       let receiptData;
       try {
-        receiptData = await parseReceiptImage(imageBase64);
+        receiptData = await parseReceiptImage(imageBase64, user.householdId);
       } catch (error) {
         console.error("Receipt parsing error:", error);
         return c.json(

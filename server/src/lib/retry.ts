@@ -8,6 +8,13 @@ export interface RetryOptions {
   initialDelayMs?: number;
   maxDelayMs?: number;
   backoffMultiplier?: number;
+  /**
+   * Called with the thrown error and the zero-based index of the attempt that just
+   * failed. Return `false` to give up immediately — no further attempts, and no sleep
+   * before the throw. Omit to retry every error unconditionally until `maxRetries` is
+   * exhausted (the default, unchanged behavior).
+   */
+  shouldRetry?: (error: unknown, attempt: number) => boolean;
 }
 
 export class RetryError extends Error {
@@ -30,27 +37,34 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
     initialDelayMs = 1000,
     maxDelayMs = 10000,
     backoffMultiplier = 2,
+    shouldRetry,
   } = options;
 
   let lastError: Error | undefined;
   let delay = initialDelayMs;
+  let attemptsMade = 0;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+      attemptsMade = attempt + 1;
 
-      // Don't retry if we've exhausted attempts
-      if (attempt >= maxRetries) {
+      // Give up without sleeping once attempts are exhausted, or as soon as the
+      // caller opts out of retrying this particular error (e.g. an invalid API key,
+      // which must never be retried — retrying it can trip provider abuse limits).
+      const exhausted = attempt >= maxRetries;
+      const optedOut = shouldRetry ? !shouldRetry(error, attempt) : false;
+      if (exhausted || optedOut) {
         break;
       }
 
       // Check for Retry-After header (429 rate limit)
       let waitTime = delay;
       if (isRateLimitError(error)) {
-        const retryAfter = getRetryAfterMs(error);
-        if (retryAfter) {
+        const retryAfter = getRetryAfterMs(error, maxDelayMs);
+        if (retryAfter !== null) {
           waitTime = retryAfter;
         }
       }
@@ -63,48 +77,83 @@ export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions =
     }
   }
 
-  throw new RetryError(`Failed after ${maxRetries + 1} attempts`, lastError!, maxRetries + 1);
+  throw new RetryError(`Failed after ${attemptsMade} attempts`, lastError!, attemptsMade);
 }
 
 /**
- * Check if error is a rate limit error (429)
+ * Check if an error is a rate-limit (429) error. Handles the two shapes seen in this
+ * codebase:
+ *  - the legacy fetch-style shape used by the Kroger/OpenFoodFacts provider code:
+ *    `{ response: { status, headers } }`, where `headers` is a `Headers` instance.
+ *  - the Vercel AI SDK's `APICallError` shape (thrown by every LLM provider call):
+ *    `{ statusCode, responseHeaders }`, where `responseHeaders` is a plain
+ *    `Record<string, string>`, not a `Headers` instance.
  */
-function isRateLimitError(
-  error: unknown
-): error is { response?: { status: number; headers?: Headers } } {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "response" in error &&
-    typeof (error as { response?: { status: number } }).response === "object" &&
-    (error as { response?: { status: number } }).response?.status === 429
-  );
+export function isRateLimitError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const e = error as { response?: { status?: unknown }; statusCode?: unknown };
+
+  if (typeof e.statusCode === "number" && e.statusCode === 429) return true;
+
+  if (typeof e.response === "object" && e.response !== null) {
+    return (e.response as { status?: unknown }).status === 429;
+  }
+
+  return false;
 }
 
 /**
- * Extract Retry-After header value in milliseconds
+ * Reads the raw `Retry-After` header value from either error shape handled by
+ * {@link isRateLimitError}. The AI SDK's `responseHeaders` is looked up
+ * case-insensitively since it's a plain object rather than a `Headers` instance
+ * (which normalizes case itself via `.get()`).
  */
-function getRetryAfterMs(error: { response?: { headers?: Headers } }): number | null {
+function getRetryAfterHeaderValue(error: unknown): string | null {
+  if (typeof error !== "object" || error === null) return null;
+  const e = error as {
+    response?: { headers?: Headers };
+    responseHeaders?: Record<string, string>;
+  };
+
+  if (e.responseHeaders && typeof e.responseHeaders === "object") {
+    const key = Object.keys(e.responseHeaders).find((k) => k.toLowerCase() === "retry-after");
+    if (key) return e.responseHeaders[key] ?? null;
+  }
+
+  const headers = e.response?.headers;
+  if (headers && typeof headers.get === "function") {
+    return headers.get("Retry-After");
+  }
+
+  return null;
+}
+
+/**
+ * Extract the Retry-After header value in milliseconds, supporting both the
+ * integer-seconds form and the HTTP-date form. The result is clamped to
+ * `[0, maxDelayMs]` so a hostile or malformed header value (e.g. an absurdly large
+ * second count, or a date far in the future) can never stall the retry loop.
+ */
+export function getRetryAfterMs(error: unknown, maxDelayMs: number): number | null {
   try {
-    const headers = error.response?.headers;
-    if (!headers) return null;
-
-    const retryAfter = headers.get?.("Retry-After");
+    const retryAfter = getRetryAfterHeaderValue(error);
     if (!retryAfter) return null;
 
-    // Retry-After can be in seconds (number) or HTTP date
+    let ms: number | null = null;
+
+    // Retry-After can be in seconds (integer) or an HTTP date.
     const seconds = parseInt(retryAfter, 10);
     if (!isNaN(seconds)) {
-      return seconds * 1000;
+      ms = seconds * 1000;
+    } else {
+      const date = new Date(retryAfter);
+      if (!isNaN(date.getTime())) {
+        ms = date.getTime() - Date.now();
+      }
     }
 
-    // Try parsing as HTTP date
-    const date = new Date(retryAfter);
-    if (!isNaN(date.getTime())) {
-      return Math.max(0, date.getTime() - Date.now());
-    }
-
-    return null;
+    if (ms === null) return null;
+    return Math.min(Math.max(0, ms), maxDelayMs);
   } catch {
     return null;
   }

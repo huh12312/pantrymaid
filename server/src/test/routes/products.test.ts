@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach, mock, afterEach } from "bun:test";
-import { setupTestDb, teardownTestDb, clearTables } from "../setup";
+import { setupTestDb, teardownTestDb, clearTables, createTestSession } from "../setup";
 import { Hono } from "hono";
 import productsRoute from "../../routes/products";
 
 describe("Products API Routes", () => {
   let app: Hono;
-  let authToken: string;
+  let authCookie: string;
   let originalFetch: typeof global.fetch;
 
   beforeAll(async () => {
@@ -18,7 +18,8 @@ describe("Products API Routes", () => {
 
   beforeEach(async () => {
     await clearTables();
-    authToken = "Bearer mock-token-test-user-id";
+    const session = await createTestSession();
+    authCookie = session.cookie;
     originalFetch = global.fetch;
 
     app = new Hono();
@@ -40,7 +41,7 @@ describe("Products API Routes", () => {
     it("returns 400 when query is too short (< 2 chars)", async () => {
       const response = await app.request("/products/search?q=a", {
         method: "GET",
-        headers: { Authorization: authToken },
+        headers: { Cookie: authCookie },
       });
       expect(response.status).toBe(400);
       const json = await response.json();
@@ -51,7 +52,7 @@ describe("Products API Routes", () => {
     it("returns 400 when query is missing", async () => {
       const response = await app.request("/products/search", {
         method: "GET",
-        headers: { Authorization: authToken },
+        headers: { Cookie: authCookie },
       });
       expect(response.status).toBe(400);
     });
@@ -79,7 +80,7 @@ describe("Products API Routes", () => {
 
       const response = await app.request("/products/search?q=milk&limit=50", {
         method: "GET",
-        headers: { Authorization: authToken },
+        headers: { Cookie: authCookie },
       });
       // Should succeed (may return 200 with empty results)
       expect([200, 500]).toContain(response.status);
@@ -110,7 +111,7 @@ describe("Products API Routes", () => {
 
       const response = await app.request("/products/search?q=milk", {
         method: "GET",
-        headers: { Authorization: authToken },
+        headers: { Cookie: authCookie },
       });
 
       expect(response.status).toBe(200);
@@ -133,14 +134,14 @@ describe("Products API Routes", () => {
       // First call hits real providers
       await app.request("/products/search?q=yogurt", {
         method: "GET",
-        headers: { Authorization: authToken },
+        headers: { Cookie: authCookie },
       });
 
       // Second identical call should be served from cache (no additional fetch)
       const callsAfterFirst = fetchCalls;
       await app.request("/products/search?q=yogurt", {
         method: "GET",
-        headers: { Authorization: authToken },
+        headers: { Cookie: authCookie },
       });
 
       expect(fetchCalls).toBe(callsAfterFirst);

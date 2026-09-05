@@ -15,6 +15,7 @@ import {
   shoppingListStatusSchema,
   createShoppingListItemSchema,
   updateShoppingListItemSchema,
+  updateLlmSettingsSchema,
 } from "../schemas";
 import { COMMON_UNITS, ITEM_PRESETS, FOOD_CATEGORIES } from "../constants";
 
@@ -568,6 +569,55 @@ describe("updateShoppingListItemSchema", () => {
   });
   it("accepts empty object", () => {
     expect(updateShoppingListItemSchema.parse({})).toEqual({});
+  });
+});
+
+describe("updateLlmSettingsSchema", () => {
+  const base = { provider: "openai" as const, model: "gpt-4o-mini" };
+
+  it("accepts apiKey as a present, non-empty string", () => {
+    const result = updateLlmSettingsSchema.parse({ ...base, apiKey: "sk-live-abcdef" });
+    expect(result.apiKey).toBe("sk-live-abcdef");
+  });
+
+  it("accepts apiKey: null distinctly — this means 'clear the stored key'", () => {
+    const result = updateLlmSettingsSchema.parse({ ...base, apiKey: null });
+    expect(result.apiKey).toBeNull();
+  });
+
+  it("accepts apiKey omitted — this means 'no change to the stored key'", () => {
+    const result = updateLlmSettingsSchema.parse({ ...base });
+    expect(result.apiKey).toBeUndefined();
+    expect("apiKey" in result).toBe(false);
+  });
+
+  it("still rejects an empty-string apiKey (not a valid way to clear it)", () => {
+    expect(() => updateLlmSettingsSchema.parse({ ...base, apiKey: "" })).toThrow();
+  });
+
+  // visionModel follows the exact same null-vs-undefined precedent as apiKey (see
+  // routes/settings.ts's PUT handler): omitted = no change, null = clear back to the
+  // env/default fallback, string = validated the same way as `model`.
+  it("accepts visionModel as a present, valid model id", () => {
+    const result = updateLlmSettingsSchema.parse({ ...base, visionModel: "gpt-5.4-mini" });
+    expect(result.visionModel).toBe("gpt-5.4-mini");
+  });
+
+  it("accepts visionModel: null distinctly — this means 'clear back to env/default'", () => {
+    const result = updateLlmSettingsSchema.parse({ ...base, visionModel: null });
+    expect(result.visionModel).toBeNull();
+  });
+
+  it("accepts visionModel omitted — this means 'no change'", () => {
+    const result = updateLlmSettingsSchema.parse({ ...base });
+    expect(result.visionModel).toBeUndefined();
+    expect("visionModel" in result).toBe(false);
+  });
+
+  it("rejects an invalid visionModel id with the same character-set rule as model", () => {
+    expect(() =>
+      updateLlmSettingsSchema.parse({ ...base, visionModel: "not a valid model id!" })
+    ).toThrow();
   });
 });
 

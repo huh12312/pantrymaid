@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
-import { setupTestDb, teardownTestDb, clearTables, testDb } from "../setup";
+import { setupTestDb, teardownTestDb, clearTables, testDb, createTestSession } from "../setup";
 import { factories } from "../factories";
 import { productCache } from "../../db/schema";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import barcodeRoute from "../../routes/barcode";
 
 describe("Barcode API Routes", () => {
   let app: Hono;
-  let authToken: string;
+  let authCookie: string;
 
   beforeAll(async () => {
     await setupTestDb();
@@ -20,9 +21,9 @@ describe("Barcode API Routes", () => {
   beforeEach(async () => {
     await clearTables();
 
-    // Mock auth token
-    const testUserId = factories.user("temp-id").id;
-    authToken = `Bearer mock-token-${testUserId}`;
+    // Real Better Auth session (barcode lookups don't require a household)
+    const session = await createTestSession();
+    authCookie = session.cookie;
 
     // Setup app with routes
     app = new Hono();
@@ -46,7 +47,7 @@ describe("Barcode API Routes", () => {
       const response = await app.request("/barcode/012345678901", {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -69,7 +70,7 @@ describe("Barcode API Routes", () => {
       const response = await app.request(`/barcode/${upc}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -82,10 +83,7 @@ describe("Barcode API Routes", () => {
       expect(json.data.source).toBe("open_food_facts");
 
       // Verify product was cached
-      const [cached] = await testDb
-        .select()
-        .from(productCache)
-        .where((t) => t.upc === upc);
+      const [cached] = await testDb.select().from(productCache).where(eq(productCache.upc, upc));
 
       expect(cached).toBeDefined();
       expect(cached.upc).toBe(upc);
@@ -99,7 +97,7 @@ describe("Barcode API Routes", () => {
       const response = await app.request(`/barcode/${fakeUpc}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -122,7 +120,7 @@ describe("Barcode API Routes", () => {
       const response = await app.request("/barcode/111111111111", {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -148,7 +146,7 @@ describe("Barcode API Routes", () => {
       const response = await app.request("/barcode/123", {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -167,7 +165,7 @@ describe("Barcode API Routes", () => {
       const response = await app.request(`/barcode/${upc}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -192,7 +190,7 @@ describe("Barcode API Routes", () => {
       const response = await app.request("/barcode/012345678901", {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -214,7 +212,7 @@ describe("Barcode API Routes", () => {
       const response = await app.request("/barcode/5060292302201", {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 

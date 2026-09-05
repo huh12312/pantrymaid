@@ -11,7 +11,7 @@ tags: [feature, frontend, barcode-scanner]
 ## Goal
 
 When the user opens the Add-Item dialog (via the `+` FAB / mobile top-bar), give them a
-**camera scan** affordance *right next to the "Search products" box*. Tapping it opens the
+**camera scan** affordance _right next to the "Search products" box_. Tapping it opens the
 existing scanner; a successful scan looks up the barcode and pre-fills the same Add form.
 
 ## Key finding
@@ -40,12 +40,12 @@ This feature is mostly **wiring a second entry point into that proven path** —
 - Mobile is the primary platform; two `side="bottom"` sheets stacked is awkward there, and the UI
   designer (whose domain this is) recommended against nesting.
 - A's main advantage (preserving in-progress edits via merge) is moot: the dominant flow is
-  scan-*first*, and the current top-bar flow already does a wholesale prefill — so B is
-  *consistent*, not a regression. A is a documented future upgrade if edit-preservation is requested.
+  scan-_first_, and the current top-bar flow already does a wholesale prefill — so B is
+  _consistent_, not a regression. A is a documented future upgrade if edit-preservation is requested.
 
 ## Files to change
 
-### 1. `apps/web/src/lib/barcodeLookup.ts` *(new — both experts agreed regardless of A/B)*
+### 1. `apps/web/src/lib/barcodeLookup.ts` _(new — both experts agreed regardless of A/B)_
 
 - Export the canonical `ScannedProduct` interface (currently duplicated inline in
   `AddItemDialog.tsx:24-30` and `InventoryPage.tsx:66-72`).
@@ -92,7 +92,7 @@ This feature is mostly **wiring a second entry point into that proven path** —
 - Confirm the scanner already degrades gracefully for **denied permission / no camera / non-HTTPS**
   ("Camera unavailable — use manual entry") and that the message is announced; manual-entry input
   stays usable as the fallback.
-- *Reconciled out:* the QA plan's "two nested sheets fighting for focus / focus-trap release" tests
+- _Reconciled out:_ the QA plan's "two nested sheets fighting for focus / focus-trap release" tests
   **do not apply** to Option B — only one dialog is ever open at a time.
 
 ## Test plan

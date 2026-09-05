@@ -1,0 +1,8 @@
+[test]
+# Global "no real LLM call" guard (see server/src/test/preload.ts) and the shared
+# route-test Postgres container (see server/src/test/db-preload.ts). server/bunfig.toml
+# has the same preload list for when bun test is invoked with cwd=server/ (e.g. the
+# server package's own `test`/`test:integration`/`test:live` scripts); this root
+# config covers invocations like `bun test server/src/test/lib` run from the repo
+# root, since bun resolves bunfig.toml relative to its cwd, not the test file paths.
+preload = ["./server/src/test/preload.ts", "./server/src/test/db-preload.ts"]

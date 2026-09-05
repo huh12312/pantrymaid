@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { HouseSelector } from "./HouseSelector";
 import {
   LayoutGrid,
@@ -13,30 +13,33 @@ import {
   Check,
   ShoppingCart,
   Settings,
+  CalendarDays,
 } from "lucide-react";
 import { RadarLogo } from "./RadarLogo";
 
 export interface SidebarProps {
   user: { name: string; email?: string } | null;
   onLogout: () => void;
-  totalItems: number;
-  expiringCount: number;
-  expiredCount: number;
-  activeSection: "all" | "pantry" | "fridge" | "freezer";
-  onSectionChange: (section: "all" | "pantry" | "fridge" | "freezer") => void;
-  pantryCount: number;
-  fridgeCount: number;
-  freezerCount: number;
+  totalItems?: number;
+  expiringCount?: number;
+  expiredCount?: number;
+  activeSection?: "all" | "pantry" | "fridge" | "freezer";
+  onSectionChange?: (section: "all" | "pantry" | "fridge" | "freezer") => void;
+  pantryCount?: number;
+  fridgeCount?: number;
+  freezerCount?: number;
   inviteCode?: string;
   reorderCount?: number;
   onReorderClick?: () => void;
+  /** Which top-level route the shell is currently rendering, for aria-current. */
+  activeRoute?: "inventory" | "mealPlan";
 }
 
 interface NavItem {
   id: "all" | "pantry" | "fridge" | "freezer";
   label: string;
   icon: React.ElementType;
-  count: number;
+  count?: number;
 }
 
 const STORAGE_KEY = "sidebar-collapsed";
@@ -55,6 +58,7 @@ export function Sidebar({
   inviteCode,
   reorderCount = 0,
   onReorderClick,
+  activeRoute,
 }: SidebarProps) {
   const [copied, setCopied] = useState(false);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -79,6 +83,9 @@ export function Sidebar({
     { id: "fridge", label: "Fridge", icon: Thermometer, count: fridgeCount },
     { id: "freezer", label: "Freezer", icon: Snowflake, count: freezerCount },
   ];
+
+  const hasOverviewData =
+    totalItems !== undefined && expiringCount !== undefined && expiredCount !== undefined;
 
   const navigate = useNavigate();
   const userInitial = user?.name ? user.name.charAt(0).toUpperCase() : "?";
@@ -151,37 +158,64 @@ export function Sidebar({
         )}
         <div className={collapsed ? "mt-5" : ""}>
           {navItems.map(({ id, label, icon: Icon, count }) => {
-            const isActive = activeSection === id;
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => onSectionChange(id)}
-                title={collapsed ? label : undefined}
-                aria-current={isActive ? "page" : undefined}
-                className={[
-                  "w-[calc(100%-0.5rem)] py-2.5 mx-1 rounded-xl flex items-center cursor-pointer transition-colors duration-150",
-                  collapsed ? "px-2.5 justify-center" : "px-3 gap-3",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                    : "text-sidebar-muted hover:text-sidebar-foreground hover:bg-white/5",
-                ].join(" ")}
-              >
+            // With a live section callback (Inventory page), the active item tracks the
+            // selected section. Without one (a page rendering the shell in "link" mode),
+            // fall back to whether the shell's active route is Inventory — "All Items" is
+            // where /inventory lands, so it stands in for the route as a whole.
+            const isActive = onSectionChange
+              ? activeSection === id
+              : activeRoute === "inventory" && id === "all";
+            const itemClassName = [
+              "w-[calc(100%-0.5rem)] py-2.5 mx-1 rounded-xl flex items-center cursor-pointer transition-colors duration-150",
+              collapsed ? "px-2.5 justify-center" : "px-3 gap-3",
+              isActive
+                ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                : "text-sidebar-muted hover:text-sidebar-foreground hover:bg-white/5",
+            ].join(" ");
+            const content = (
+              <>
                 <Icon className="h-4 w-4 shrink-0" />
                 {!collapsed && (
                   <>
                     <span className="text-sm font-medium flex-1">{label}</span>
-                    <span
-                      className={[
-                        "text-xs px-1.5 py-0.5 rounded-full",
-                        isActive ? "bg-white/20 text-white" : "bg-white/5 text-sidebar-muted",
-                      ].join(" ")}
-                    >
-                      {count}
-                    </span>
+                    {typeof count === "number" && (
+                      <span
+                        className={[
+                          "text-xs px-1.5 py-0.5 rounded-full",
+                          isActive ? "bg-white/20 text-white" : "bg-white/5 text-sidebar-muted",
+                        ].join(" ")}
+                      >
+                        {count}
+                      </span>
+                    )}
                   </>
                 )}
-              </button>
+              </>
+            );
+            if (onSectionChange) {
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => onSectionChange(id)}
+                  title={collapsed ? label : undefined}
+                  aria-current={isActive ? "page" : undefined}
+                  className={itemClassName}
+                >
+                  {content}
+                </button>
+              );
+            }
+            return (
+              <Link
+                key={id}
+                to="/inventory"
+                title={collapsed ? label : undefined}
+                aria-current={isActive ? "page" : undefined}
+                className={itemClassName}
+              >
+                {content}
+              </Link>
             );
           })}
         </div>
@@ -189,6 +223,26 @@ export function Sidebar({
 
       {/* Divider: location navigation above, utility actions below */}
       <div className="border-t border-sidebar-border mx-3 my-2" />
+
+      {/* Meal Plan — a top-level route peer of Inventory, not a location tab, so it
+          lives below the divider styled like the Settings link (plan §5.1). */}
+      <div>
+        <Link
+          to="/meal-plan"
+          title={collapsed ? "Meal Plan" : undefined}
+          aria-current={activeRoute === "mealPlan" ? "page" : undefined}
+          className={[
+            "w-[calc(100%-0.5rem)] py-2.5 mx-1 rounded-xl flex items-center cursor-pointer transition-colors duration-150",
+            collapsed ? "px-2.5 justify-center" : "px-3 gap-3",
+            activeRoute === "mealPlan"
+              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+              : "text-sidebar-muted hover:text-sidebar-foreground hover:bg-white/5",
+          ].join(" ")}
+        >
+          <CalendarDays className="h-4 w-4 shrink-0" />
+          {!collapsed && <span className="text-sm font-medium flex-1">Meal Plan</span>}
+        </Link>
+      </div>
 
       {/* Re-order button */}
       <div className="mt-1">
@@ -220,8 +274,9 @@ export function Sidebar({
         </button>
       </div>
 
-      {/* Stats section — hidden when collapsed */}
-      {!collapsed && (
+      {/* Stats section — hidden when collapsed, or when counts weren't supplied
+          (e.g. rendered from a page other than Inventory, with no data to summarize). */}
+      {!collapsed && hasOverviewData && (
         <>
           <div className="border-t border-sidebar-border mx-4 my-4" />
           <div>
@@ -235,7 +290,7 @@ export function Sidebar({
             <div className="px-4 py-1.5 flex items-center justify-between">
               <span className="text-sm text-sidebar-muted">Expiring Soon</span>
               <span
-                className={`font-semibold ${expiringCount > 0 ? "text-amber-400" : "text-sidebar-foreground"}`}
+                className={`font-semibold ${(expiringCount ?? 0) > 0 ? "text-amber-400" : "text-sidebar-foreground"}`}
               >
                 {expiringCount}
               </span>
@@ -243,7 +298,7 @@ export function Sidebar({
             <div className="px-4 py-1.5 flex items-center justify-between">
               <span className="text-sm text-sidebar-muted">Expired</span>
               <span
-                className={`font-semibold ${expiredCount > 0 ? "text-rose-400" : "text-sidebar-foreground"}`}
+                className={`font-semibold ${(expiredCount ?? 0) > 0 ? "text-rose-400" : "text-sidebar-foreground"}`}
               >
                 {expiredCount}
               </span>

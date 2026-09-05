@@ -1,13 +1,21 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
-import { setupTestDb, teardownTestDb, clearTables, testDb } from "../setup";
+import {
+  setupTestDb,
+  teardownTestDb,
+  clearTables,
+  testDb,
+  createTestSession,
+  createAuthUserRow,
+} from "../setup";
 import { factories } from "../factories";
 import { households, users } from "../../db/schema";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import householdsRoute from "../../routes/households";
 
 describe("Households API Routes", () => {
   let app: Hono;
-  let authToken: string;
+  let authCookie: string;
   let testUserId: string;
 
   beforeAll(async () => {
@@ -21,9 +29,12 @@ describe("Households API Routes", () => {
   beforeEach(async () => {
     await clearTables();
 
-    // Mock user ID for authenticated requests
-    testUserId = factories.user("temp-id").id;
-    authToken = `Bearer mock-token-${testUserId}`;
+    // Real Better Auth session for authenticated requests. This user intentionally has
+    // no `users` (app) row yet — several tests below exercise "brand new user with no
+    // household" flows (e.g. POST /households).
+    const session = await createTestSession();
+    testUserId = session.id;
+    authCookie = session.cookie;
 
     // Setup app with routes
     app = new Hono();
@@ -40,7 +51,7 @@ describe("Households API Routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify(newHousehold),
       });
@@ -59,7 +70,7 @@ describe("Households API Routes", () => {
       const [insertedHousehold] = await testDb
         .select()
         .from(households)
-        .where((t) => t.id === json.data.id);
+        .where(eq(households.id, json.data.id));
 
       expect(insertedHousehold).toBeDefined();
       expect(insertedHousehold.name).toBe("Smith Family");
@@ -75,7 +86,7 @@ describe("Households API Routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify(newHousehold),
       });
@@ -87,7 +98,7 @@ describe("Households API Routes", () => {
       const [createdUser] = await testDb
         .select()
         .from(users)
-        .where((t) => t.householdId === householdId);
+        .where(eq(users.householdId, householdId));
 
       expect(createdUser).toBeDefined();
       expect(createdUser.id).toBe(testUserId);
@@ -119,7 +130,7 @@ describe("Households API Routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify(invalidHousehold),
       });
@@ -128,14 +139,18 @@ describe("Households API Routes", () => {
     });
 
     it("should generate unique invite codes", async () => {
+      // POST /households 400s a second time for the same user ("User already belongs
+      // to a household" — see routes/households.ts), so two distinct households need
+      // two distinct authenticated users, not two calls from the same session.
       const household1 = { name: "Household 1" };
       const household2 = { name: "Household 2" };
+      const otherSession = await createTestSession();
 
       const response1 = await app.request("/households", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify(household1),
       });
@@ -144,7 +159,7 @@ describe("Households API Routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: otherSession.cookie,
         },
         body: JSON.stringify(household2),
       });
@@ -158,25 +173,27 @@ describe("Households API Routes", () => {
 
   describe("GET /households/:id", () => {
     it("should return household with members", async () => {
-      // Create household and users
+      // Create household and users. user1 reuses beforeEach's authenticated session so
+      // the request below is made as an actual member of the household.
       const testHousehold = factories.household();
+      await testDb.insert(households).values(testHousehold);
+
       const user1 = factories.user(testHousehold.id, {
+        id: testUserId,
         displayName: "John Doe",
       });
+      const authUser2 = await createAuthUserRow();
       const user2 = factories.user(testHousehold.id, {
+        id: authUser2.id,
         displayName: "Jane Doe",
       });
 
-      await testDb.insert(households).values(testHousehold);
       await testDb.insert(users).values([user1, user2]);
-
-      // Update auth to be one of the users
-      authToken = `Bearer mock-token-${user1.id}`;
 
       const response = await app.request(`/households/${testHousehold.id}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -197,7 +214,7 @@ describe("Households API Routes", () => {
       const response = await app.request(`/households/${fakeId}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -205,22 +222,21 @@ describe("Households API Routes", () => {
     });
 
     it("should prevent IDOR - cannot access other households", async () => {
-      // Create two households
+      // Create two households. user1 (household1) reuses beforeEach's authenticated
+      // session and tries to access household2.
       const household1 = factories.household();
       const household2 = factories.household();
-      const user1 = factories.user(household1.id);
-      const user2 = factories.user(household2.id);
-
       await testDb.insert(households).values([household1, household2]);
-      await testDb.insert(users).values([user1, user2]);
 
-      // User from household1 tries to access household2
-      authToken = `Bearer mock-token-${user1.id}`;
+      const user1 = factories.user(household1.id, { id: testUserId });
+      const authUser2 = await createAuthUserRow();
+      const user2 = factories.user(household2.id, { id: authUser2.id });
+      await testDb.insert(users).values([user1, user2]);
 
       const response = await app.request(`/households/${household2.id}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -229,19 +245,18 @@ describe("Households API Routes", () => {
 
     it("should not expose invite code to non-members", async () => {
       const testHousehold = factories.household();
-      const householdUser = factories.user(testHousehold.id);
-      const otherUser = factories.user("other-household-id");
-
       await testDb.insert(households).values(testHousehold);
+
+      const householdAuthUser = await createAuthUserRow();
+      const householdUser = factories.user(testHousehold.id, { id: householdAuthUser.id });
       await testDb.insert(users).values(householdUser);
 
-      // Other user tries to access household
-      authToken = `Bearer mock-token-${otherUser.id}`;
-
+      // beforeEach's authenticated session has no household of its own — it plays the
+      // "other user" trying to access someone else's household.
       const response = await app.request(`/households/${testHousehold.id}`, {
         method: "GET",
         headers: {
-          Authorization: authToken,
+          Cookie: authCookie,
         },
       });
 
@@ -259,14 +274,13 @@ describe("Households API Routes", () => {
   describe("PATCH /households/me/settings", () => {
     it("saves Kroger store settings to the household", async () => {
       const testHousehold = factories.household();
-      const user = factories.user(testHousehold.id);
+      const user = factories.user(testHousehold.id, { id: testUserId });
       await testDb.insert(households).values(testHousehold);
       await testDb.insert(users).values(user);
-      authToken = `Bearer mock-token-${user.id}`;
 
       const response = await app.request("/households/me/settings", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: authToken },
+        headers: { "Content-Type": "application/json", Cookie: authCookie },
         body: JSON.stringify({
           krogerLocationId: "09700165",
           krogerStoreName: "Harris Teeter - Shops at Shadowline",
@@ -292,14 +306,13 @@ describe("Households API Routes", () => {
         krogerChain: "HART",
         krogerZipCode: "28607",
       };
-      const user = factories.user(testHousehold.id);
+      const user = factories.user(testHousehold.id, { id: testUserId });
       await testDb.insert(households).values(testHousehold);
       await testDb.insert(users).values(user);
-      authToken = `Bearer mock-token-${user.id}`;
 
       const response = await app.request("/households/me/settings", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: authToken },
+        headers: { "Content-Type": "application/json", Cookie: authCookie },
         body: JSON.stringify({
           krogerLocationId: null,
           krogerStoreName: null,
@@ -326,7 +339,7 @@ describe("Households API Routes", () => {
       // User with no household
       const response = await app.request("/households/me/settings", {
         method: "PATCH",
-        headers: { "Content-Type": "application/json", Authorization: authToken },
+        headers: { "Content-Type": "application/json", Cookie: authCookie },
         body: JSON.stringify({ krogerLocationId: "09700165" }),
       });
       expect(response.status).toBe(404);
@@ -341,15 +354,15 @@ describe("Households API Routes", () => {
       });
       await testDb.insert(households).values(testHousehold);
 
-      // New user trying to join
-      const newUserId = factories.user("temp").id;
-      authToken = `Bearer mock-token-${newUserId}`;
+      // beforeEach's authenticated session has no household yet — perfect "new user
+      // trying to join" actor.
+      const newUserId = testUserId;
 
       const response = await app.request(`/households/${testHousehold.id}/members`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify({
           inviteCode: "TESTCODE",
@@ -363,10 +376,7 @@ describe("Households API Routes", () => {
       expect(json.data.householdId).toBe(testHousehold.id);
 
       // Verify user was added to household
-      const [addedUser] = await testDb
-        .select()
-        .from(users)
-        .where((t) => t.id === newUserId);
+      const [addedUser] = await testDb.select().from(users).where(eq(users.id, newUserId));
 
       expect(addedUser).toBeDefined();
       expect(addedUser.householdId).toBe(testHousehold.id);
@@ -382,7 +392,7 @@ describe("Households API Routes", () => {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify({
           inviteCode: "WRONGCODE",
@@ -402,19 +412,18 @@ describe("Households API Routes", () => {
       const household2 = factories.household({
         inviteCode: "NEWHOUSE",
       });
-      const existingUser = factories.user(household1.id);
+      // existingUser reuses beforeEach's authenticated session, which then tries to
+      // join household2 despite already belonging to household1.
+      const existingUser = factories.user(household1.id, { id: testUserId });
 
       await testDb.insert(households).values([household1, household2]);
       await testDb.insert(users).values(existingUser);
-
-      // User from household1 tries to join household2
-      authToken = `Bearer mock-token-${existingUser.id}`;
 
       const response = await app.request(`/households/${household2.id}/members`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authToken,
+          Cookie: authCookie,
         },
         body: JSON.stringify({
           inviteCode: "NEWHOUSE",

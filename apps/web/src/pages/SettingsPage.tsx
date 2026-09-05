@@ -1,14 +1,17 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MapPin, Search, Store, Check, X } from "lucide-react";
+import { ArrowLeft, MapPin, Search, Sparkles, Store, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, type StoreResult } from "@/lib/api";
 import { queryKeys } from "@/lib/queryKeys";
+import { AiProviderSection } from "@/components/settings/AiProviderSection";
+import { PromptTemplateEditor } from "@/components/settings/PromptTemplateEditor";
 
 export default function SettingsPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const queryClient = useQueryClient();
 
   const [zip, setZip] = useState("");
@@ -17,6 +20,26 @@ export default function SettingsPage() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [promptDirty, setPromptDirty] = useState(false);
+
+  const aiSectionRef = useRef<HTMLElement | null>(null);
+
+  // React Router doesn't scroll to (or announce) a `#hash` target on its own — the
+  // "Go to Settings" link from the meal-plan flow's `invalid_api_key` error banner and
+  // `AiSetupPrompt` both deep-link to `/settings#ai`, and without this the user lands
+  // silently at the top of a long page. Runs on mount AND whenever the hash changes
+  // (e.g. clicking the link again while already on this page).
+  useEffect(() => {
+    if (location.hash !== "#ai") return;
+    const el = aiSectionRef.current;
+    if (!el) return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches ?? false;
+    el.scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" });
+    // `tabIndex={-1}` on the target makes it programmatically focusable without adding
+    // it to the tab order — this is what makes a screen reader actually announce
+    // arrival here instead of silently repositioning the visual viewport.
+    el.focus();
+  }, [location.hash]);
 
   const { data: household, isLoading } = useQuery({
     queryKey: queryKeys.household.details(),
@@ -86,12 +109,27 @@ export default function SettingsPage() {
   const currentChain = household?.krogerChain;
   const currentZip = household?.krogerZipCode;
 
+  function handleBack() {
+    // Unsaved-changes guard (plan §5.6): the app mounts a plain <BrowserRouter>
+    // (src/main.tsx), not a data router, so react-router-dom's useBlocker can't
+    // intercept in-app navigation. This back button is the one in-app exit point
+    // SettingsPage itself owns, so it's the one place that guard can actually live
+    // without touching App.tsx's router setup.
+    if (promptDirty) {
+      const confirmed = window.confirm(
+        "You have unsaved changes to the meal plan prompt. Leave without saving?"
+      );
+      if (!confirmed) return;
+    }
+    navigate(-1);
+  }
+
   return (
     <div className="min-h-dvh bg-background">
       {/* Header */}
       <div className="border-b bg-card">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => navigate(-1)} aria-label="Go back">
+          <Button variant="ghost" size="icon" onClick={handleBack} aria-label="Go back">
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-lg font-semibold">Settings</h1>
@@ -220,6 +258,33 @@ export default function SettingsPage() {
               )}
             </div>
           )}
+        </section>
+
+        {/* AI Meal Planning section (plan §5.6) — provider/model/key, household-level
+            meal preferences, and the prompt template. Two <h3> subgroups keep heading
+            order intact (h1 page title → h2 section → h3 subgroup). */}
+        <section
+          id="ai"
+          ref={aiSectionRef}
+          tabIndex={-1}
+          aria-labelledby="ai-meal-planning-heading"
+          className="bg-card rounded-2xl border p-5 space-y-4 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            <h2 id="ai-meal-planning-heading" className="font-semibold text-base">
+              AI Meal Planning
+            </h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Bring your own API key to generate weekly meal plans from your pantry.
+          </p>
+
+          <AiProviderSection />
+
+          <div className="border-t pt-4">
+            <PromptTemplateEditor onDirtyChange={setPromptDirty} />
+          </div>
         </section>
 
         {/* Household section */}

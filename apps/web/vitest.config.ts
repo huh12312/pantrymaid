@@ -27,10 +27,10 @@ export default defineConfig({
       // Raise toward the 80% target as untested flows (HouseSelector, SettingsPage,
       // Sidebar) gain tests.
       thresholds: {
-        statements: 59,
-        branches: 50,
-        functions: 48,
-        lines: 60,
+        statements: 72,
+        branches: 65,
+        functions: 63,
+        lines: 73,
       },
     },
   },
