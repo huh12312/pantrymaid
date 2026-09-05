@@ -49,3 +49,6 @@ docker-compose.override.yml
 # Playwright test artifacts
 playwright-report/
 docker-compose-pantryraid.yml
+
+# Generated fake-camera feed for barcode e2e (see scripts/make-fake-camera-video.sh)
+e2e/fixtures/*.y4m
