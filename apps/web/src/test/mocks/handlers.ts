@@ -186,6 +186,8 @@ export const handlers = [
         brand: "Coca-Cola",
         category: "Beverages",
         imageUrl: "https://example.com/coke.jpg",
+        estimatedExpirationDays: 7,
+        estimatedExpirationLabel: "~1 week",
       },
     });
   }),

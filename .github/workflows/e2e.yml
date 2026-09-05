@@ -55,7 +55,10 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
-          bun-version: latest
+          # Pinned deliberately: an unpinned bun silently changed test-file glob behavior
+          # once already (see the `**` discovery bug), so the runtime that resolves which
+          # tests run should not drift on its own. 1.4.2 is the version CI verified green.
+          bun-version: 1.4.2
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

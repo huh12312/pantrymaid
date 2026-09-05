@@ -6,6 +6,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../mocks/server";
 import { AddItemDialog } from "@/components/inventory/AddItemDialog";
 import type { ProductSearchResult, InventoryItem } from "@/lib/api";
+import type { ScannedProduct } from "@/lib/barcodeLookup";
 
 const API_BASE = "http://localhost:3000";
 
@@ -407,6 +408,156 @@ describe("AddItemDialog — expiry date field", () => {
 
       expect(onSubmit).toHaveBeenCalledWith(
         expect.objectContaining({ expirationDate: "2026-01-06", expirationEstimated: true })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Barcode-scan expiry estimate — threading estimatedExpirationDays/Label from
+// ScannedProduct into the same estimateDatePatch guard presets/AI-suggestion
+// already use.
+// ---------------------------------------------------------------------------
+
+describe("AddItemDialog — barcode scan expiry estimate", () => {
+  const SCANNED_WITH_ESTIMATE: ScannedProduct = {
+    name: "Fresh Milk",
+    brand: "Acme Dairy",
+    barcode: "012345678901",
+    estimatedExpirationDays: 7,
+    estimatedExpirationLabel: "~1 week",
+  };
+
+  const SCANNED_NO_ESTIMATE: ScannedProduct = {
+    name: "Canned Beans",
+    barcode: "099999999999",
+  };
+
+  const SCANNED_WITH_SHORTER_ESTIMATE: ScannedProduct = {
+    name: "Fresh Milk",
+    brand: "Acme Dairy",
+    barcode: "012345678902",
+    estimatedExpirationDays: 3,
+    estimatedExpirationLabel: "~3 days",
+  };
+
+  function renderScan(scannedProduct: ScannedProduct | null | undefined, onSubmit = vi.fn()) {
+    const queryClient = makeQueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <AddItemDialog
+          open
+          onOpenChange={vi.fn()}
+          onSubmit={onSubmit}
+          scannedProduct={scannedProduct}
+        />
+      </QueryClientProvider>
+    );
+    const rerenderWith = (next: ScannedProduct | null | undefined) =>
+      view.rerender(
+        <QueryClientProvider client={queryClient}>
+          <AddItemDialog open onOpenChange={vi.fn()} onSubmit={onSubmit} scannedProduct={next} />
+        </QueryClientProvider>
+      );
+    return { ...view, rerenderWith, onSubmit };
+  }
+
+  it("pre-fills the expiry date and marks it estimated when the scan includes an estimate", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 0, 1, 12, 0, 0)); // Jan 1, 2026, noon local
+    try {
+      const user = userEvent.setup();
+      const { onSubmit } = renderScan(SCANNED_WITH_ESTIMATE);
+
+      const dateInput = screen.getByLabelText(/expiry date/i);
+      // 7 days out from Jan 1, 2026 -> Jan 8, 2026.
+      expect(dateInput).toHaveValue("01/08/2026");
+      expect(
+        screen.getByText(/estimated ~1 week based on the scanned product/i)
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: /add item/i }));
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ expirationDate: "2026-01-08", expirationEstimated: true })
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("is a no-op when the scan response omits the estimate fields", async () => {
+    const user = userEvent.setup();
+    const { onSubmit } = renderScan(SCANNED_NO_ESTIMATE);
+
+    const dateInput = screen.getByLabelText(/expiry date/i);
+    expect(dateInput).toHaveValue("");
+    expect(
+      screen.queryByText(/estimated .* based on the scanned product/i)
+    ).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/^name/i), "Canned Beans");
+    await user.click(screen.getByRole("button", { name: /add item/i }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
+    expect(onSubmit.mock.calls[0]![0].expirationDate).toBeUndefined();
+    expect(onSubmit.mock.calls[0]![0].expirationEstimated).toBe(false);
+  });
+
+  it("does not overwrite a date the user already typed before the scan estimate arrives", async () => {
+    const user = userEvent.setup();
+    // No scannedProduct yet — mirrors a manually-opened dialog where the user
+    // types a date, then taps the in-dialog scan button; scannedProduct only
+    // arrives afterwards, without the dialog ever closing.
+    const { rerenderWith, onSubmit } = renderScan(undefined);
+
+    const dateInput = screen.getByLabelText(/expiry date/i);
+    await user.type(dateInput, "06152026");
+    expect(dateInput).toHaveValue("06/15/2026");
+
+    rerenderWith(SCANNED_WITH_ESTIMATE);
+
+    // The user's own typed date survives — not clobbered by the scan estimate.
+    expect(dateInput).toHaveValue("06/15/2026");
+    expect(
+      screen.queryByText(/estimated .* based on the scanned product/i)
+    ).not.toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/^name/i), "Test Item");
+    await user.click(screen.getByRole("button", { name: /add item/i }));
+
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ expirationDate: "2026-06-15", expirationEstimated: false })
+    );
+  });
+
+  it("a newer scan's estimate overwrites a prior scan-derived estimate", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 0, 1, 12, 0, 0)); // Jan 1, 2026, noon local
+    try {
+      const { rerenderWith, onSubmit } = renderScan(SCANNED_WITH_ESTIMATE);
+      const user = userEvent.setup();
+
+      const dateInput = screen.getByLabelText(/expiry date/i);
+      expect(dateInput).toHaveValue("01/08/2026");
+
+      // A second scan (different product/barcode) with a shorter estimate — the
+      // field still holds a prior SYSTEM estimate, so it's replaced, same as a
+      // second preset selection replaces the first.
+      rerenderWith(SCANNED_WITH_SHORTER_ESTIMATE);
+
+      expect(dateInput).toHaveValue("01/04/2026");
+      expect(
+        screen.getByText(/estimated ~3 days based on the scanned product/i)
+      ).toBeInTheDocument();
+
+      await user.type(screen.getByLabelText(/^name/i), "Test Item");
+      await user.click(screen.getByRole("button", { name: /add item/i }));
+
+      expect(onSubmit).toHaveBeenCalledWith(
+        expect.objectContaining({ expirationDate: "2026-01-04", expirationEstimated: true })
       );
     } finally {
       vi.useRealTimers();

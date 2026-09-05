@@ -90,10 +90,10 @@ export function AddItemDialog({
     enabled: open,
   });
 
-  // Computes an estimated-expiry patch for the preset and AI-suggestion
-  // paths, sharing one guard: only overwrite the expiry when the field is
-  // empty and not mid-typing, or when it currently holds a prior system
-  // estimate. Otherwise the user's own typed/pasted date is preserved.
+  // Computes an estimated-expiry patch for the preset, AI-suggestion, and
+  // barcode-scan paths, sharing one guard: only overwrite the expiry when the
+  // field is empty and not mid-typing, or when it currently holds a prior
+  // system estimate. Otherwise the user's own typed/pasted date is preserved.
   const estimateDatePatch = (
     prev: CreateItemDto,
     days: number
@@ -107,6 +107,12 @@ export function AddItemDialog({
   const suggestMutation = useMutation({
     mutationFn: (name: string) => api.suggestItemDefaults(name),
     onSuccess: (suggestion) => {
+      // Manual/opt-in only (fired from the Quick Add "AI suggest" button) — scanning
+      // never triggers this, so there's no redundant second LLM call. If the user
+      // explicitly asks for a name-based suggestion after a barcode scan already set
+      // an estimate, this is a deliberate later action and, per estimateDatePatch's
+      // existing rule, is allowed to replace the prior estimate — same precedence
+      // preset selection already has over a previous AI suggestion.
       setFormData((prev) => ({
         ...prev,
         unit: suggestion.unit,
@@ -199,23 +205,61 @@ export function AddItemDialog({
         opened: editItem.opened ?? false,
       });
     } else if (scannedProduct) {
-      setFormData({
-        name: scannedProduct.name,
-        brand: scannedProduct.brand,
-        quantity: 1,
-        unit: "unit",
-        location: defaultLocation ?? "pantry",
-        category: scannedProduct.category,
-        imageUrl: scannedProduct.imageUrl,
-        barcodeUpc: scannedProduct.barcode,
-        opened: false,
-        expirationEstimated: false,
+      setFormData((prev) => {
+        const base: CreateItemDto = {
+          name: scannedProduct.name,
+          brand: scannedProduct.brand,
+          quantity: 1,
+          unit: "unit",
+          location: defaultLocation ?? "pantry",
+          category: scannedProduct.category,
+          imageUrl: scannedProduct.imageUrl,
+          barcodeUpc: scannedProduct.barcode,
+          opened: false,
+          // Default to whatever the field already held — not a blank
+          // template — so a date the user already typed (e.g. before
+          // re-scanning via the in-dialog scan button, which updates
+          // `scannedProduct` without the dialog ever closing) isn't dropped
+          // when the guard below decides NOT to overwrite it.
+          expirationDate: prev.expirationDate,
+          expirationEstimated: prev.expirationEstimated ?? false,
+        };
+        // Apply the barcode-derived estimate through the SAME guard used by
+        // presets and AI suggestions, rather than a second date-derivation path.
+        // Among the three estimate sources it's the strongest signal (keyed on
+        // the actual matched product, not just a name), so it's applied eagerly
+        // here rather than waiting for user action. A later rescan's estimate
+        // still overwrites a PRIOR estimate, same as a second preset does.
+        // `estimatedExpirationDays` is optional and omitted on estimation
+        // failure, so a response missing it is a no-op (datePatch stays `{}`,
+        // leaving the `base` defaults above untouched).
+        const datePatch =
+          scannedProduct.estimatedExpirationDays != null
+            ? estimateDatePatch(prev, scannedProduct.estimatedExpirationDays)
+            : {};
+        return { ...base, ...datePatch };
       });
     } else {
       setFormData(emptyForm(defaultLocation));
     }
     setDuplicateWarning(null);
   }, [editItem, scannedProduct, open, defaultLocation]);
+
+  // Only true while formData's expiry date/estimated-flag still match exactly
+  // what the CURRENT scannedProduct's estimate would produce — i.e. nothing
+  // (user edit, a preset, a fresh AI suggestion) has overwritten it since. Pure
+  // derived comparison, not a second source of truth: `addDays` is the same
+  // helper estimateDatePatch itself calls, used here only to know what to
+  // compare against, never to decide whether to write it.
+  const scanEstimateDate =
+    scannedProduct?.estimatedExpirationDays != null
+      ? addDays(scannedProduct.estimatedExpirationDays)
+      : null;
+  const showScanEstimateHint =
+    !!scanEstimateDate &&
+    !!scannedProduct?.estimatedExpirationLabel &&
+    formData.expirationEstimated === true &&
+    formData.expirationDate === scanEstimateDate;
 
   const handleNameBlur = () => {
     if (editItem || !formData.name.trim()) return;
@@ -583,6 +627,7 @@ export function AddItemDialog({
                   ref={dateInputRef}
                   id="expirationDate"
                   value={formData.expirationDate || ""}
+                  aria-describedby={showScanEstimateHint ? "scan-estimate-hint" : undefined}
                   onChange={(value, meta) => {
                     expiryPartialRef.current = meta.partial;
                     setFormData((prev) => ({
@@ -590,10 +635,19 @@ export function AddItemDialog({
                       expirationDate: value,
                       // Any user-driven edit (typing, clearing) supersedes a
                       // prior system estimate — it's no longer an estimate.
+                      // (This also naturally stops showScanEstimateHint from
+                      // matching, since the date and/or flag now differ from
+                      // the scan's estimate.)
                       expirationEstimated: false,
                     }));
                   }}
                 />
+                {showScanEstimateHint && (
+                  <p id="scan-estimate-hint" className="mt-1 text-xs text-muted-foreground">
+                    Estimated {scannedProduct?.estimatedExpirationLabel} based on the scanned
+                    product
+                  </p>
+                )}
               </div>
 
               {editItem && (

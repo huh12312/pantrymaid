@@ -6,6 +6,11 @@ export interface ScannedProduct {
   category?: string;
   imageUrl?: string;
   barcode: string;
+  // From the server's LLM-derived estimate (see barcodeProductSchema). Both are
+  // omitted when the server's estimation step fails, so callers must treat them
+  // as optional and degrade to today's no-estimate behavior.
+  estimatedExpirationDays?: number;
+  estimatedExpirationLabel?: string;
 }
 
 export async function lookupBarcodeToProduct(
@@ -20,6 +25,8 @@ export async function lookupBarcodeToProduct(
         category: product.category,
         imageUrl: product.imageUrl,
         barcode,
+        estimatedExpirationDays: product.estimatedExpirationDays,
+        estimatedExpirationLabel: product.estimatedExpirationLabel,
       },
       notice: null,
     };

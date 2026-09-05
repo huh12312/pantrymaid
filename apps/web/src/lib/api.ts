@@ -11,6 +11,9 @@ export type {
   ItemLocation,
   ProductSearchResult,
   ReceiptProcessingResult,
+  // No Date-coerced fields (estimatedExpirationDays is a number, estimatedExpirationLabel
+  // a string), so unlike MealPlan* below this is safe to re-export as-is.
+  BarcodeProduct,
   // Meal planning — enum-shaped types have no wire-format surprises, so they are
   // re-exported as-is (plan §4.4). Entity types with Date-coerced fields (MealPlan,
   // MealPlanPrompt) are NOT re-exported raw — see the local overrides below.
@@ -42,6 +45,7 @@ import type {
   ItemLocation,
   ProductSearchResult,
   ReceiptProcessingResult,
+  BarcodeProduct,
   LLMProvider,
   LlmSettings,
   UpdateLlmSettingsInput,
@@ -413,11 +417,10 @@ export const api = {
   },
 
   // Barcode lookup
-  lookupBarcode: async (barcode: string) => {
-    const response = await fetchApi<{
-      success: boolean;
-      data: { name: string; brand?: string; category?: string; imageUrl?: string };
-    }>(`/api/barcode/${barcode}`);
+  lookupBarcode: async (barcode: string): Promise<BarcodeProduct> => {
+    const response = await fetchApi<{ success: boolean; data: BarcodeProduct }>(
+      `/api/barcode/${barcode}`
+    );
     return response.data;
   },
 

@@ -24,6 +24,7 @@ describe("lookupBarcodeToProduct", () => {
 
   it("success — returns product fields and notice=null", async () => {
     mockLookupBarcode.mockResolvedValueOnce({
+      upc: BARCODE,
       name: "Coca-Cola Classic",
       brand: "Coca-Cola",
       category: "Beverages",
@@ -39,6 +40,33 @@ describe("lookupBarcodeToProduct", () => {
       category: "Beverages",
       imageUrl: "https://example.com/coke.jpg",
       barcode: BARCODE,
+      estimatedExpirationDays: undefined,
+      estimatedExpirationLabel: undefined,
+    });
+  });
+
+  it("success with an expiration estimate — forwards estimatedExpirationDays/Label", async () => {
+    mockLookupBarcode.mockResolvedValueOnce({
+      upc: BARCODE,
+      name: "Coca-Cola Classic",
+      brand: "Coca-Cola",
+      category: "Beverages",
+      imageUrl: "https://example.com/coke.jpg",
+      estimatedExpirationDays: 7,
+      estimatedExpirationLabel: "~1 week",
+    });
+
+    const result = await lookupBarcodeToProduct(BARCODE);
+
+    expect(result.notice).toBeNull();
+    expect(result.scannedProduct).toEqual({
+      name: "Coca-Cola Classic",
+      brand: "Coca-Cola",
+      category: "Beverages",
+      imageUrl: "https://example.com/coke.jpg",
+      barcode: BARCODE,
+      estimatedExpirationDays: 7,
+      estimatedExpirationLabel: "~1 week",
     });
   });
 
