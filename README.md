@@ -10,6 +10,7 @@ AI meal planner that builds a week of meals from what's actually on your shelves
 [![CI](https://github.com/huh12312/pantryradar/actions/workflows/ci.yml/badge.svg)](https://github.com/huh12312/pantryradar/actions/workflows/ci.yml)
 [![E2E](https://github.com/huh12312/pantryradar/actions/workflows/e2e.yml/badge.svg)](https://github.com/huh12312/pantryradar/actions/workflows/e2e.yml)
 [![Docker](https://img.shields.io/docker/v/masterhuh/pantryradar?label=docker&sort=semver)](https://hub.docker.com/r/masterhuh/pantryradar)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 </div>
 
@@ -441,9 +442,5 @@ household isolation enforced in the same SQL statement as the lookup · Prettier
 
 ## License
 
-> [!NOTE]
-> No license has been chosen yet. Under default copyright that means **all rights
-> reserved** — others may view the code, but not legally use, modify, fork, or
-> redistribute it, and "public" contributions can't be accepted cleanly. If this repo is
-> meant to be shared, add a `LICENSE` file (MIT and Apache-2.0 are the usual choices for
-> a self-hosted app like this) and replace this note.
+[MIT](LICENSE) — free to use, modify, fork, and self-host, commercially or otherwise.
+Keep the copyright notice; there's no warranty.
