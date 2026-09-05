@@ -1,16 +1,29 @@
-import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
+import { describe, test, expect, beforeAll, beforeEach, afterEach, mock } from "bun:test";
 import { OpenFoodFactsClient } from "../../lib/openfoodfacts";
 import { db } from "../../lib/db";
 import { productCache } from "../../db/schema";
 import { eq } from "drizzle-orm";
+import { setupTestDb } from "../setup";
 
 describe("OpenFoodFactsClient", () => {
   let client: OpenFoodFactsClient;
   let originalFetch: typeof global.fetch;
 
-  beforeEach(() => {
+  // Three of these tests read/write `product_cache`. `src/test/db-preload.ts` starts a
+  // clean testcontainer and points DATABASE_URL at it, but it does NOT run migrations —
+  // so without this the table simply doesn't exist and those tests fail with
+  // `relation "product_cache" does not exist`. Route tests get their schema the same way.
+  beforeAll(async () => {
+    await setupTestDb();
+  });
+
+  beforeEach(async () => {
     client = new OpenFoodFactsClient();
     originalFetch = global.fetch;
+    // `product_cache` is shared process-wide state. Without this, a test that caches a
+    // UPC leaks into later tests using the same UPC — the "API errors" test mocks a 500
+    // but was served an earlier test's cache hit, so it never exercised the error path.
+    await db.delete(productCache);
   });
 
   afterEach(() => {

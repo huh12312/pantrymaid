@@ -47,3 +47,131 @@ jobs:
           # Kroger credentials for server unit tests (optional — tests mock fetch)
           KROGER_CLIENT_ID: ${{ secrets.KROGER_CLIENT_ID }}
           KROGER_CLIENT_SECRET: ${{ secrets.KROGER_CLIENT_SECRET }}
+
+  test-integration:
+    name: Server route/integration tests (testcontainers)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      NODE_ENV: test
+      # Better Auth — route tests create real Better Auth users/sessions via auth.api.
+      BETTER_AUTH_SECRET: ci-test-secret-not-for-production
+      BETTER_AUTH_URL: http://localhost:3000
+      # Meal-plan KEK — base64 of a fixed 32-byte dummy value (crypto.ts hard-requires
+      # exactly 32 decoded bytes and refuses to run with anything else). Literal test
+      # value only, never a real secret, and distinct from BETTER_AUTH_SECRET.
+      MEAL_PLAN_KEK: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      # Deliberately-invalid LLM credentials. Never omit these: the global test preload
+      # (server/src/test/preload.ts) replaces _deps.generateObject with a thrower, so any
+      # route test that forgot to stub it fails loudly instead of silently depending on
+      # env hygiene — but these still exist so a stub that ever escapes hits an obvious
+      # 401/invalid-key error from the provider rather than a real, billable call.
+      OPENAI_API_KEY: sk-test-not-a-real-key
+      ANTHROPIC_API_KEY: sk-ant-test-not-a-real-key
+      OPENROUTER_API_KEY: sk-or-test-not-a-real-key
+      # Kroger credentials (optional — tests mock fetch, matches the unit-test job above)
+      KROGER_CLIENT_ID: ${{ secrets.KROGER_CLIENT_ID }}
+      KROGER_CLIENT_SECRET: ${{ secrets.KROGER_CLIENT_SECRET }}
+      # DATABASE_URL is intentionally NOT set here: server/src/test/db-preload.ts (a bun
+      # test preload wired via server/bunfig.toml) starts a throwaway Postgres
+      # testcontainer before any test file is imported and overwrites
+      # process.env.DATABASE_URL with its connection string. Setting it here would be
+      # inert at best (it's unconditionally overwritten) and misleading at worst.
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify Docker is available for testcontainers
+        run: docker info
+
+      # Guards against the two bunfig.toml files (repo root and server/) silently
+      # resolving to the wrong one: bun resolves bunfig.toml relative to its cwd, and
+      # only server/bunfig.toml's preload list is correct for a `bun test` invoked with
+      # cwd=server (as test:integration is, below). This step fails loudly, independent
+      # of the main suite, if that preload is ever inactive for this exact invocation
+      # path — instead of every route test's LLM fallback path silently depending on the
+      # (deliberately invalid) OPENAI_API_KEY/ANTHROPIC_API_KEY above raising instead.
+      - name: Verify the "no real LLM call" test preload is active for this invocation path
+        working-directory: server
+        run: |
+          cat > /tmp/verify-llm-guard.test.ts <<EOF
+          import { test, expect } from "bun:test";
+          import { _deps } from "${GITHUB_WORKSPACE}/server/src/lib/llm";
+          test("global preload replaced _deps.generateObject with a thrower", async () => {
+            await expect(_deps.generateObject({} as never)).rejects.toThrow(
+              "Real LLM call attempted in test"
+            );
+          });
+          EOF
+          bun test /tmp/verify-llm-guard.test.ts
+
+      # test:integration (server/package.json) runs src/test/routes under testcontainers
+      # — a real, throwaway Postgres container per CI run, never the dev/prod database.
+      # test:live (real, human-triggered LLM calls) is never invoked anywhere in CI.
+      #
+      # The `tee` + summary-line check below exists because a job that passes by
+      # discovering and running zero tests is worse than no job at all: bun currently
+      # errors out (non-zero exit) if the file glob matches nothing, but this makes that
+      # failure mode explicit and impossible to miss, and additionally trips if fewer
+      # than the known 9 route test files are discovered (a silent partial-discovery
+      # regression, e.g. reintroducing a `**` glob that requires an extra directory
+      # level bun test files don't have).
+      - name: Run server route/integration tests
+        working-directory: server
+        run: |
+          set -o pipefail
+          bun run test:integration 2>&1 | tee integration-test-output.log
+          test_status=$?
+
+          summary=$(grep -E "^Ran [0-9]+ tests? across [0-9]+ files?" integration-test-output.log || true)
+          echo "Discovery summary: ${summary:-<none found>}"
+
+          if [ -z "$summary" ]; then
+            echo "::error::No 'Ran N tests across M files' summary found in test:integration output — bun likely errored before executing any tests (e.g. a broken test-file glob). Treating as a failure even if the exit code was 0."
+            exit 1
+          fi
+
+          tests=$(echo "$summary" | grep -oE '^Ran [0-9]+' | grep -oE '[0-9]+')
+          files=$(echo "$summary" | grep -oE 'across [0-9]+' | grep -oE '[0-9]+')
+          echo "Discovered ${tests} tests across ${files} files"
+
+          if [ "$files" -lt 9 ]; then
+            echo "::error::Expected at least 9 route test files (barcode, generationLimits, households, items, meal-plans, mealplan-sweep, products, receipt, settings) but only ${files} ran. Test discovery may be silently skipping files."
+            exit 1
+          fi
+
+          if [ "$tests" -lt 1 ]; then
+            echo "::error::0 tests executed despite files being discovered."
+            exit 1
+          fi
+
+          exit $test_status
+
+      - name: Upload integration test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: server-integration-test-log
+          path: server/integration-test-output.log
+          retention-days: 7

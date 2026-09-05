@@ -8,9 +8,9 @@
     "build": "bun build ./src/index.ts --outfile ./dist/index.js --target=bun",
     "start": "bun run dist/index.js",
     "lint": "eslint src/",
-    "test": "bun --env-file=../.env test src/test/lib/**/*.test.ts src/test/unit/**/*.test.ts --timeout 30000",
-    "test:integration": "bun --env-file=../.env test src/test/routes/**/*.test.ts --timeout 120000",
-    "test:live": "bun --env-file=../.env test src/test/integrations/**/*.test.ts --timeout 60000",
+    "test": "bun --env-file=../.env test src/test/lib --timeout 30000",
+    "test:integration": "bun --env-file=../.env test src/test/routes --timeout 120000",
+    "test:live": "bun --env-file=../.env test src/test/integrations --timeout 60000",
     "db:generate": "drizzle-kit generate",
     "db:push": "bun --env-file=../.env drizzle-kit push",
     "seed": "bun --env-file=../.env run src/db/seed.ts"

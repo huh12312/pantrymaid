@@ -171,8 +171,8 @@ describe("Households API Routes", () => {
     });
   });
 
-  describe("GET /households/:id", () => {
-    it("should return household with members", async () => {
+  describe("GET /households/me", () => {
+    it("should return the authenticated user's household with members", async () => {
       // Create household and users. user1 reuses beforeEach's authenticated session so
       // the request below is made as an actual member of the household.
       const testHousehold = factories.household();
@@ -190,7 +190,7 @@ describe("Households API Routes", () => {
 
       await testDb.insert(users).values([user1, user2]);
 
-      const response = await app.request(`/households/${testHousehold.id}`, {
+      const response = await app.request("/households/me", {
         method: "GET",
         headers: {
           Cookie: authCookie,
@@ -208,10 +208,13 @@ describe("Households API Routes", () => {
       expect(json.data.members[1].displayName).toBeDefined();
     });
 
-    it("should return 404 for non-existent household", async () => {
-      const fakeId = "00000000-0000-0000-0000-000000000000";
-
-      const response = await app.request(`/households/${fakeId}`, {
+    it("should return 404, not 403, when the user has no household", async () => {
+      // beforeEach's authenticated session has no household of its own. GET /me never
+      // takes a client-supplied household id — it only ever looks up the caller's own
+      // householdId — so there is no "wrong household" to be forbidden from; a user
+      // with no household is simply told 404, never 403, which matches the codebase's
+      // deliberate choice not to confirm that some other household exists.
+      const response = await app.request("/households/me", {
         method: "GET",
         headers: {
           Cookie: authCookie,
@@ -219,55 +222,66 @@ describe("Households API Routes", () => {
       });
 
       expect(response.status).toBe(404);
+      const json = await response.json();
+      expect(json.success).toBe(false);
     });
 
-    it("should prevent IDOR - cannot access other households", async () => {
+    it("should prevent IDOR - only ever returns the caller's own household, never another's", async () => {
       // Create two households. user1 (household1) reuses beforeEach's authenticated
-      // session and tries to access household2.
+      // session; user2 is a completely separate member of household2. Since /me has no
+      // id parameter to attack, isolation here means: user1's response must reflect
+      // household1 only, with no trace of household2's data.
       const household1 = factories.household();
       const household2 = factories.household();
       await testDb.insert(households).values([household1, household2]);
 
       const user1 = factories.user(household1.id, { id: testUserId });
       const authUser2 = await createAuthUserRow();
-      const user2 = factories.user(household2.id, { id: authUser2.id });
+      const user2 = factories.user(household2.id, {
+        id: authUser2.id,
+        displayName: "Should Not Leak",
+      });
       await testDb.insert(users).values([user1, user2]);
 
-      const response = await app.request(`/households/${household2.id}`, {
+      const response = await app.request("/households/me", {
         method: "GET",
         headers: {
           Cookie: authCookie,
         },
       });
 
-      expect(response.status).toBe(403); // Forbidden
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.data.id).toBe(household1.id);
+      expect(json.data.id).not.toBe(household2.id);
+      expect(json.data.members).toHaveLength(1);
+      expect(json.data.members.map((m: { displayName: string }) => m.displayName)).not.toContain(
+        "Should Not Leak"
+      );
     });
 
-    it("should not expose invite code to non-members", async () => {
-      const testHousehold = factories.household();
+    it("should not expose another household's invite code to a non-member", async () => {
+      const testHousehold = factories.household({ inviteCode: "SECRETCD" });
       await testDb.insert(households).values(testHousehold);
 
-      const householdAuthUser = await createAuthUserRow();
-      const householdUser = factories.user(testHousehold.id, { id: householdAuthUser.id });
-      await testDb.insert(users).values(householdUser);
+      const memberAuthUser = await createAuthUserRow();
+      const member = factories.user(testHousehold.id, { id: memberAuthUser.id });
+      await testDb.insert(users).values(member);
 
-      // beforeEach's authenticated session has no household of its own — it plays the
-      // "other user" trying to access someone else's household.
-      const response = await app.request(`/households/${testHousehold.id}`, {
+      // beforeEach's authenticated session belongs to no household — it plays the
+      // outsider trying to reach someone else's household data via /me. Since /me is
+      // always scoped to the caller's own (nonexistent) householdId, this 404s before
+      // ever touching `testHousehold`'s row.
+      const response = await app.request("/households/me", {
         method: "GET",
         headers: {
           Cookie: authCookie,
         },
       });
 
-      const json = await response.json();
-
-      // Should either be forbidden or not include invite code
-      if (response.status === 200) {
-        expect(json.data.inviteCode).toBeUndefined();
-      } else {
-        expect(response.status).toBe(403);
-      }
+      expect(response.status).toBe(404);
+      const body = await response.text();
+      expect(body).not.toContain("SECRETCD");
     });
   });
 
@@ -344,10 +358,51 @@ describe("Households API Routes", () => {
       });
       expect(response.status).toBe(404);
     });
+
+    it("prevents IDOR - does not mutate another household's settings", async () => {
+      // household1 is the caller's own household; household2 belongs to nobody the
+      // caller is associated with. A PATCH scoped to "my household" must never touch
+      // household2's row, regardless of how many other households exist in the table.
+      const household1 = factories.household();
+      const household2 = {
+        ...factories.household(),
+        krogerLocationId: "OTHERLOC",
+        krogerStoreName: "Other Store",
+        krogerChain: "OTHR",
+        krogerZipCode: "00000",
+      };
+      const user1 = factories.user(household1.id, { id: testUserId });
+      await testDb.insert(households).values([household1, household2]);
+      await testDb.insert(users).values(user1);
+
+      const response = await app.request("/households/me/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Cookie: authCookie },
+        body: JSON.stringify({
+          krogerLocationId: "MYLOC",
+          krogerStoreName: "My Store",
+          krogerChain: "MINE",
+          krogerZipCode: "11111",
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const json = await response.json();
+      expect(json.data.id).toBe(household1.id);
+
+      const [untouched] = await testDb
+        .select()
+        .from(households)
+        .where(eq(households.id, household2.id));
+      expect(untouched.krogerLocationId).toBe("OTHERLOC");
+      expect(untouched.krogerStoreName).toBe("Other Store");
+      expect(untouched.krogerChain).toBe("OTHR");
+      expect(untouched.krogerZipCode).toBe("00000");
+    });
   });
 
-  describe("POST /households/:id/members", () => {
-    it("should add member via invite code", async () => {
+  describe("POST /households/join", () => {
+    it("should join a household via a valid invite code", async () => {
       // Create household
       const testHousehold = factories.household({
         inviteCode: "TESTCODE",
@@ -358,7 +413,7 @@ describe("Households API Routes", () => {
       // trying to join" actor.
       const newUserId = testUserId;
 
-      const response = await app.request(`/households/${testHousehold.id}/members`, {
+      const response = await app.request("/households/join", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -373,7 +428,7 @@ describe("Households API Routes", () => {
 
       const json = await response.json();
       expect(json.success).toBe(true);
-      expect(json.data.householdId).toBe(testHousehold.id);
+      expect(json.data.id).toBe(testHousehold.id);
 
       // Verify user was added to household
       const [addedUser] = await testDb.select().from(users).where(eq(users.id, newUserId));
@@ -382,24 +437,24 @@ describe("Households API Routes", () => {
       expect(addedUser.householdId).toBe(testHousehold.id);
     });
 
-    it("should fail with invalid invite code", async () => {
+    it("should fail with an invalid invite code", async () => {
       const testHousehold = factories.household({
         inviteCode: "TESTCODE",
       });
       await testDb.insert(households).values(testHousehold);
 
-      const response = await app.request(`/households/${testHousehold.id}/members`, {
+      const response = await app.request("/households/join", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Cookie: authCookie,
         },
         body: JSON.stringify({
-          inviteCode: "WRONGCODE",
+          inviteCode: "WRONGCOD",
         }),
       });
 
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(400);
 
       const json = await response.json();
       expect(json.success).toBe(false);
@@ -419,7 +474,7 @@ describe("Households API Routes", () => {
       await testDb.insert(households).values([household1, household2]);
       await testDb.insert(users).values(existingUser);
 
-      const response = await app.request(`/households/${household2.id}/members`, {
+      const response = await app.request("/households/join", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -440,7 +495,7 @@ describe("Households API Routes", () => {
       const testHousehold = factories.household();
       await testDb.insert(households).values(testHousehold);
 
-      const response = await app.request(`/households/${testHousehold.id}/members`, {
+      const response = await app.request("/households/join", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

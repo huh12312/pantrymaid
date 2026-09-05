@@ -1,11 +1,17 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
-import { createItemSchema, updateItemSchema, itemLocationSchema } from "@pantrymaid/shared/schemas";
+import {
+  createItemSchema,
+  updateItemSchema,
+  itemLocationSchema,
+  paginationQuerySchema,
+  DEFAULT_PAGE_SIZE,
+} from "@pantrymaid/shared/schemas";
 import type { CreateItemInput, UpdateItemInput } from "@pantrymaid/shared/schemas";
 import { authMiddleware, getUser } from "../middleware/auth";
 import { db } from "../lib/db";
 import { items as itemsTable, houses as housesTable } from "../db/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { z } from "zod";
 import { resolveImageForItem } from "../lib/imageresolver";
 import { suggestItemDefaults } from "../lib/openai";
@@ -116,26 +122,39 @@ items.post("/", zValidator("json", createItemSchema), async (c) => {
 });
 
 /**
- * GET /items - List items (with optional location filter)
+ * GET /items - List items (with optional location filter and pagination)
+ *
+ * Pagination is opt-in: `page`/`pageSize` are only honored — i.e. the result set is only
+ * sliced — when at least one of them is present on the querystring. Callers that omit
+ * both (e.g. the web app's `getItems()`, which has no pagination UI) keep getting the
+ * full, unsliced list, exactly as before this feature was added. `page`/`pageSize` are
+ * still reported in the response envelope in that case (using the defaults) purely as
+ * metadata; they never truncate an unparameterised call.
  */
 items.get(
   "/",
   zValidator(
     "query",
-    z.object({
-      location: itemLocationSchema.optional(),
-      houseId: z.string().uuid().optional(),
-    })
+    z
+      .object({
+        location: itemLocationSchema.optional(),
+        houseId: z.string().uuid().optional(),
+      })
+      .merge(paginationQuerySchema)
   ),
   async (c) => {
     try {
       const user = getUser(c);
-      const { location, houseId } = c.req.valid("query");
+      const { location, houseId, page, pageSize } = c.req.valid("query");
+
+      const paginationRequested = page !== undefined || pageSize !== undefined;
+      const resolvedPage = page ?? 1;
+      const resolvedPageSize = pageSize ?? DEFAULT_PAGE_SIZE;
 
       if (!user.householdId) {
         return c.json({
           success: true,
-          data: { items: [] },
+          data: { items: [], total: 0, page: resolvedPage, pageSize: resolvedPageSize },
         });
       }
 
@@ -147,15 +166,29 @@ items.get(
         conditions.push(eq(itemsTable.location, location));
       }
 
-      const itemsList = await db
+      const [{ total }] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(itemsTable)
+        .where(and(...conditions));
+
+      const baseQuery = db
         .select()
         .from(itemsTable)
         .where(and(...conditions))
         .orderBy(asc(itemsTable.name));
 
+      const itemsList = paginationRequested
+        ? await baseQuery.limit(resolvedPageSize).offset((resolvedPage - 1) * resolvedPageSize)
+        : await baseQuery;
+
       return c.json({
         success: true,
-        data: { items: itemsList.map(serializeItem) },
+        data: {
+          items: itemsList.map(serializeItem),
+          total,
+          page: resolvedPage,
+          pageSize: resolvedPageSize,
+        },
       });
     } catch (error) {
       console.error("Error fetching items:", error);

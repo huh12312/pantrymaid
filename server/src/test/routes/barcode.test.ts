@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "bun:test";
+import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, mock } from "bun:test";
 import { setupTestDb, teardownTestDb, clearTables, testDb, createTestSession } from "../setup";
 import { factories } from "../factories";
 import { productCache } from "../../db/schema";
@@ -9,6 +9,7 @@ import barcodeRoute from "../../routes/barcode";
 describe("Barcode API Routes", () => {
   let app: Hono;
   let authCookie: string;
+  let originalFetch: typeof global.fetch;
 
   beforeAll(async () => {
     await setupTestDb();
@@ -24,10 +25,15 @@ describe("Barcode API Routes", () => {
     // Real Better Auth session (barcode lookups don't require a household)
     const session = await createTestSession();
     authCookie = session.cookie;
+    originalFetch = global.fetch;
 
     // Setup app with routes
     app = new Hono();
     app.route("/barcode", barcodeRoute);
+  });
+
+  afterEach(() => {
+    global.fetch = originalFetch;
   });
 
   describe("GET /barcode/:upc", () => {
@@ -64,8 +70,29 @@ describe("Barcode API Routes", () => {
     });
 
     it("should fetch from Open Food Facts if not in cache", async () => {
-      // UPC not in cache
-      const upc = "041220867820"; // Real Coca-Cola UPC
+      // UPC not in cache. Mock the OFF API instead of hitting the live network — real
+      // product data drifts over time, which previously made this test flaky/wrong.
+      const upc = "041220867820";
+
+      global.fetch = mock(async (url: string | URL | Request) => {
+        const urlStr = url.toString();
+        if (urlStr.includes(`/product/${upc}.json`)) {
+          return new Response(
+            JSON.stringify({
+              status: 1,
+              product: {
+                code: upc,
+                product_name: "Coca-Cola Classic",
+                brands: "Coca-Cola",
+                categories: "en:beverages,en:carbonated-drinks,en:sodas",
+                image_url: "https://example.com/coca-cola.jpg",
+              },
+            }),
+            { status: 200 }
+          );
+        }
+        return new Response(JSON.stringify({ status: 0 }), { status: 200 });
+      });
 
       const response = await app.request(`/barcode/${upc}`, {
         method: "GET",
@@ -91,8 +118,11 @@ describe("Barcode API Routes", () => {
     });
 
     it("should return 404 for unknown barcode", async () => {
-      // Fake UPC that doesn't exist
+      // Fake UPC that doesn't exist. Mocked as a genuine OFF "not found" response
+      // (status: 0) — the real UPC we used to use for this happens to exist in OFF now.
       const fakeUpc = "999999999999";
+
+      global.fetch = mock(async () => new Response(JSON.stringify({ status: 0 }), { status: 200 }));
 
       const response = await app.request(`/barcode/${fakeUpc}`, {
         method: "GET",

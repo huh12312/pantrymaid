@@ -57,6 +57,17 @@ export const updateItemSchema = z.object({
   notes: z.string().optional(),
 });
 
+// Pagination query params (e.g. GET /items?page=2&pageSize=10). Both are optional —
+// callers that omit them get the endpoint's own "no pagination requested" behavior
+// (see route implementations), while explicit values are always coerced/validated here.
+export const DEFAULT_PAGE_SIZE = 50;
+export const MAX_PAGE_SIZE = 100;
+
+export const paginationQuerySchema = z.object({
+  page: z.coerce.number().int().positive().optional(),
+  pageSize: z.coerce.number().int().positive().max(MAX_PAGE_SIZE).optional(),
+});
+
 // House schemas
 export const houseSchema = z.object({
   id: z.string().uuid(),
@@ -569,6 +580,7 @@ export type ItemLocation = z.infer<typeof itemLocationSchema>;
 export type Item = z.infer<typeof itemSchema>;
 export type CreateItemInput = z.infer<typeof createItemSchema>;
 export type UpdateItemInput = z.infer<typeof updateItemSchema>;
+export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 export type Household = z.infer<typeof householdSchema>;
 export type CreateHouseholdInput = z.infer<typeof createHouseholdSchema>;
 export type User = z.infer<typeof userSchema>;
