@@ -47,7 +47,16 @@ const ENV_KEYS = [
   "LLM_PROVIDER",
   "LLM_MODEL",
   "LLM_VISION_MODEL",
+  // Saved/restored like the rest, then re-seeded per test below. These tests call the
+  // REAL encryptSecret, so a KEK must exist — relying on the developer's .env leaking
+  // one in makes the suite pass locally and fail in CI, which is exactly what happened.
+  "MEAL_PLAN_KEK",
 ] as const;
+
+/** Matches the self-contained pattern in `crypto.test.ts` — no ambient KEK required. */
+function randomBase64Kek(byteLength = 32): string {
+  return Buffer.from(crypto.getRandomValues(new Uint8Array(byteLength))).toString("base64");
+}
 let savedEnv: Record<string, string | undefined>;
 
 let createModelCalls: Array<{ provider: string; model: string; apiKey: string }>;
@@ -132,6 +141,7 @@ beforeEach(() => {
     savedEnv[key] = process.env[key];
     delete process.env[key];
   }
+  process.env.MEAL_PLAN_KEK = randomBase64Kek();
   stubCreateModel();
 });
 
