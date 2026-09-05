@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Camera, X, Search, Zap, ZapOff } from "lucide-react";
+import { acquireCameraStream } from "@/lib/barcodeCamera";
+import { resolveScanEngine, type ScanEngineControls } from "@/lib/scanEngine";
 
 // Extended camera constraint types (torch/zoom not in TypeScript stdlib)
 interface ExtendedTrackCapabilities extends MediaTrackCapabilities {
@@ -42,8 +44,7 @@ export function BarcodeScanner({ open, onOpenChange, onScan }: BarcodeScannerPro
   const [zoomLevel, setZoomLevel] = useState<1 | 2 | 3>(1);
   const [zoomRange, setZoomRange] = useState<{ min: number; max: number } | null>(null);
 
-  const readerRef = useRef<BrowserMultiFormatReader | null>(null);
-  const controlsRef = useRef<{ stop: () => void } | null>(null);
+  const controlsRef = useRef<ScanEngineControls | null>(null);
   const trackRef = useRef<MediaStreamTrack | null>(null);
   const scannedRef = useRef(false);
 
@@ -56,7 +57,6 @@ export function BarcodeScanner({ open, onOpenChange, onScan }: BarcodeScannerPro
       }
       controlsRef.current = null;
     }
-    readerRef.current = null;
     trackRef.current = null;
     scannedRef.current = false;
     setScanning(false);
@@ -89,24 +89,57 @@ export function BarcodeScanner({ open, onOpenChange, onScan }: BarcodeScannerPro
   useEffect(() => {
     if (!open || !videoEl) return;
 
-    const reader = new BrowserMultiFormatReader();
-    readerRef.current = reader;
+    let cancelled = false;
     setScanning(true);
 
     const startScanning = async () => {
       try {
-        const controls = await reader.decodeFromVideoDevice(undefined, videoEl, (result, err) => {
-          if (result) handleScan(result.getText());
-          if (err && err.name !== "NotFoundException") {
-            console.error("Scanning error:", err);
-          }
+        // Acquire the stream ourselves (rather than letting ZXing's
+        // decodeFromVideoDevice pick its own constraints) so we can request a
+        // real resolution hint and, where confidently identifiable, the main
+        // rear color camera rather than an ultra-wide/telephoto/depth sensor.
+        // See lib/barcodeCamera.ts for the constraint/selection heuristics.
+        const stream = await acquireCameraStream({ mediaDevices: navigator.mediaDevices });
+        if (cancelled) {
+          stream.getVideoTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        // Prefer the native, hardware-accelerated BarcodeDetector when this
+        // browser has one that supports our grocery symbologies; ZXing is
+        // the fallback (and the only path in Firefox/Safari/jsdom).
+        const engine = await resolveScanEngine({
+          win: typeof window !== "undefined" ? window : undefined,
+          createZXingReader: () => new BrowserMultiFormatReader(),
         });
+        if (cancelled) {
+          stream.getVideoTracks().forEach((t) => t.stop());
+          return;
+        }
+
+        const controls = await engine.start(stream, videoEl, handleScan, (err) => {
+          console.error("Scanning error:", err);
+        });
+        if (cancelled) {
+          controls.stop();
+          return;
+        }
         controlsRef.current = controls;
 
-        // Detect torch / zoom support after the stream is live
-        const track = (videoEl.srcObject as MediaStream)?.getVideoTracks()[0];
+        // Detect torch / zoom support, and log the negotiated resolution for
+        // dev-visible diagnosis (devtools console + a data attribute), now
+        // that we hold a direct reference to the stream we opened.
+        const track = stream.getVideoTracks()[0];
         if (track) {
           trackRef.current = track;
+
+          const settings = track.getSettings();
+          console.info(
+            `[BarcodeScanner] negotiated camera stream: ${settings.width ?? "?"}x${settings.height ?? "?"}` +
+              ` deviceId=${settings.deviceId ?? "unknown"} label="${track.label || "unlabeled"}"`
+          );
+          videoEl.dataset.negotiatedResolution = `${settings.width ?? "?"}x${settings.height ?? "?"}`;
+
           const caps = track.getCapabilities() as ExtendedTrackCapabilities;
           setHasTorch(caps.torch === true);
           if (caps.zoom) {
@@ -134,6 +167,7 @@ export function BarcodeScanner({ open, onOpenChange, onScan }: BarcodeScannerPro
 
     void startScanning();
     return () => {
+      cancelled = true;
       stopCamera();
     };
   }, [open, videoEl, handleScan, stopCamera]);

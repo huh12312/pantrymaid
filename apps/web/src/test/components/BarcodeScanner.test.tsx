@@ -2,29 +2,39 @@ import { describe, test, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 
 /**
- * Shared, per-test-mutable handles for the mocked @zxing/browser reader.
+ * Shared, per-test-mutable handles for the mocked @zxing/browser reader and
+ * the mocked navigator.mediaDevices.
  *
  * `vi.hoisted` lets the `vi.mock` factory (which is hoisted above imports)
- * safely reference these — each test sets `state.capabilities` and inspects
- * `applyConstraintsMock` to assert what focus constraint the scanner applied.
+ * safely reference these — each test sets `state.capabilities` /
+ * `state.devices` and inspects `applyConstraintsMock`/`getUserMediaMock` to
+ * assert what the scanner requested.
+ *
+ * The component no longer calls `decodeFromVideoDevice` (which picked its own
+ * constraints internally, with no resolution hint — the root cause of the
+ * "must zoom to 2x" defect). It now acquires the MediaStream itself via
+ * `navigator.mediaDevices.getUserMedia` (see lib/barcodeCamera.ts) and hands
+ * the already-open stream to `@zxing/browser`'s `decodeFromStream`.
  */
-const { applyConstraintsMock, state } = vi.hoisted(() => ({
+const { applyConstraintsMock, getUserMediaMock, enumerateDevicesMock, state } = vi.hoisted(() => ({
   applyConstraintsMock: vi.fn(),
-  state: { capabilities: {} as Record<string, unknown> },
+  getUserMediaMock: vi.fn(),
+  enumerateDevicesMock: vi.fn(),
+  state: {
+    capabilities: {} as Record<string, unknown>,
+    settings: {} as Record<string, unknown>,
+  },
 }));
 
 vi.mock("@zxing/browser", () => ({
   BrowserMultiFormatReader: class {
-    // Mirrors decodeFromVideoDevice(deviceId, videoEl, callback): attaches a
-    // fake MediaStream to the video element so the component's post-stream
-    // `if (track)` capability block executes, then returns stop controls.
-    async decodeFromVideoDevice(_deviceId: undefined, videoEl: HTMLVideoElement) {
-      const track = {
-        getCapabilities: () => state.capabilities,
-        applyConstraints: applyConstraintsMock,
-      };
+    // Mirrors decodeFromStream(stream, videoEl, callback): attaches the
+    // (already-mocked) stream to the video element's srcObject so the
+    // component's post-stream `if (track)` capability block executes, then
+    // returns stop controls.
+    async decodeFromStream(stream: MediaStream, videoEl: HTMLVideoElement) {
       Object.defineProperty(videoEl, "srcObject", {
-        value: { getVideoTracks: () => [track] },
+        value: stream,
         configurable: true,
         writable: true,
       });
@@ -35,17 +45,69 @@ vi.mock("@zxing/browser", () => ({
 
 import { BarcodeScanner } from "@/components/inventory/BarcodeScanner";
 
+function makeFakeTrack() {
+  return {
+    getCapabilities: () => state.capabilities,
+    getSettings: () => state.settings,
+    applyConstraints: applyConstraintsMock,
+    stop: vi.fn(),
+    label: "camera2 0, facing back",
+  };
+}
+
 function renderScanner() {
   return render(<BarcodeScanner open onOpenChange={vi.fn()} onScan={vi.fn()} />);
 }
 
-describe("BarcodeScanner — continuous autofocus", () => {
-  beforeEach(() => {
-    applyConstraintsMock.mockReset();
-    applyConstraintsMock.mockResolvedValue(undefined);
-    state.capabilities = {};
+beforeEach(() => {
+  applyConstraintsMock.mockReset();
+  applyConstraintsMock.mockResolvedValue(undefined);
+  enumerateDevicesMock.mockReset();
+  enumerateDevicesMock.mockResolvedValue([]);
+  getUserMediaMock.mockReset();
+  state.capabilities = {};
+  state.settings = {};
+
+  getUserMediaMock.mockImplementation(() => {
+    const track = makeFakeTrack();
+    const stream = { getVideoTracks: () => [track] } as unknown as MediaStream;
+    return Promise.resolve(stream);
   });
 
+  Object.defineProperty(navigator, "mediaDevices", {
+    value: {
+      getUserMedia: getUserMediaMock,
+      enumerateDevices: enumerateDevicesMock,
+    },
+    configurable: true,
+    writable: true,
+  });
+});
+
+describe("BarcodeScanner — camera stream acquisition", () => {
+  it("requests a resolution-hinted stream via getUserMedia (the fix for the '640x480, must zoom' defect)", async () => {
+    renderScanner();
+
+    await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+    expect(getUserMediaMock).toHaveBeenCalledWith({
+      video: expect.objectContaining({
+        width: { ideal: 2560 },
+        height: { ideal: 1440 },
+      }),
+      audio: false,
+    });
+  });
+
+  it("falls back to manual entry when getUserMedia rejects (permission denied / no camera)", async () => {
+    getUserMediaMock.mockRejectedValue(new Error("Permission denied"));
+    renderScanner();
+
+    await screen.findByText(/camera unavailable/i);
+    expect(screen.getByLabelText(/enter barcode manually/i)).toBeInTheDocument();
+  });
+});
+
+describe("BarcodeScanner — continuous autofocus", () => {
   it("requests continuous focus when the device supports it", async () => {
     state.capabilities = { focusMode: ["single-shot", "continuous"] };
     renderScanner();
