@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach, mock } from "bun:test";
 import {
   encryptSecret,
   decryptSecret,
@@ -6,6 +6,8 @@ import {
   fingerprintSecret,
   KekConfigError,
   SecretDecryptionError,
+  checkMealPlanKekBootStatus,
+  logMealPlanKekBootStatus,
   type EncryptedSecret,
 } from "../../lib/crypto";
 
@@ -101,6 +103,130 @@ describe("missing or malformed KEK — never falls back to plaintext", () => {
     delete process.env.MEAL_PLAN_KEK;
     process.env.MEAL_PLAN_KEK_PREVIOUS = randomBase64Kek();
     await expect(decryptSecret(encrypted, HOUSEHOLD_A)).rejects.toThrow(KekConfigError);
+  });
+});
+
+describe("KekConfigError.reason — absent vs malformed, so callers can tell these apart", () => {
+  // This is the exact split the incident needed: the browser used to show an
+  // IDENTICAL message ("Server is not configured to store API keys") whether the KEK
+  // was missing entirely or merely malformed, so an operator who "fixed" a missing
+  // KEK by setting a malformed one hit the same wall twice.
+  async function captureThrown(fn: () => Promise<unknown>): Promise<unknown> {
+    try {
+      await fn();
+    } catch (err) {
+      return err;
+    }
+    throw new Error("expected the function to throw, but it did not");
+  }
+
+  test("absent KEK -> reason 'absent'", async () => {
+    delete process.env.MEAL_PLAN_KEK;
+    const err = await captureThrown(() => encryptSecret("sk-anything", HOUSEHOLD_A));
+    expect(err).toBeInstanceOf(KekConfigError);
+    expect((err as KekConfigError).reason).toBe("absent");
+  });
+
+  test("wrong-length KEK -> reason 'malformed'", async () => {
+    process.env.MEAL_PLAN_KEK = randomBase64Kek(16);
+    const err = await captureThrown(() => encryptSecret("sk-anything", HOUSEHOLD_A));
+    expect(err).toBeInstanceOf(KekConfigError);
+    expect((err as KekConfigError).reason).toBe("malformed");
+  });
+
+  test("the classic incident, reproduced: a 32-CHARACTER string (not the base64 output of 32 RAW bytes) decodes to 24 bytes, reason 'malformed', message names the exact byte count and the fix", async () => {
+    process.env.MEAL_PLAN_KEK = "a".repeat(32); // the actual mistake, not a synthetic stand-in
+    const err = await captureThrown(() => encryptSecret("sk-anything", HOUSEHOLD_A));
+    expect(err).toBeInstanceOf(KekConfigError);
+    expect((err as KekConfigError).reason).toBe("malformed");
+    expect((err as KekConfigError).message).toContain("got 24");
+    expect((err as KekConfigError).message).toContain("openssl rand -base64 32");
+  });
+});
+
+describe("checkMealPlanKekBootStatus / logMealPlanKekBootStatus — boot-time self-diagnosis", () => {
+  let originalLog: typeof console.log;
+  let originalError: typeof console.error;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let logSpy: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let errorSpy: any;
+
+  beforeEach(() => {
+    originalLog = console.log;
+    originalError = console.error;
+    logSpy = mock(() => {});
+    errorSpy = mock(() => {});
+    console.log = logSpy;
+    console.error = errorSpy;
+  });
+
+  afterEach(() => {
+    console.log = originalLog;
+    console.error = originalError;
+  });
+
+  test("valid KEK -> status 'valid'; logs once via console.log, never console.error", () => {
+    // The file-level beforeEach above already seeded a valid random KEK.
+    const status = checkMealPlanKekBootStatus();
+    expect(status).toEqual({ state: "valid" });
+
+    logMealPlanKekBootStatus(status);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  test("absent KEK -> status 'absent'; logs a single benign INFO line via console.log, never console.error (this must not read as a failure)", () => {
+    delete process.env.MEAL_PLAN_KEK;
+    const status = checkMealPlanKekBootStatus();
+    expect(status).toEqual({ state: "absent" });
+
+    logMealPlanKekBootStatus(status);
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+    const logged = logSpy.mock.calls[0][0] as string;
+    expect(logged).toMatch(/not set/i);
+    expect(logged).toMatch(/disabled/i);
+    expect(logged).toMatch(/container-wide/i);
+  });
+
+  test("malformed KEK (the exact incident: a 32-character string, not openssl's 44-character output) -> status 'malformed' with actualBytes 24; logs a loud MULTI-LINE error via console.error", () => {
+    process.env.MEAL_PLAN_KEK = "a".repeat(32);
+    const status = checkMealPlanKekBootStatus();
+    expect(status).toEqual({ state: "malformed", actualBytes: 24 });
+
+    logMealPlanKekBootStatus(status);
+    expect(errorSpy).toHaveBeenCalledTimes(1);
+    expect(logSpy).not.toHaveBeenCalled();
+
+    const logged = errorSpy.mock.calls[0][0] as string;
+    expect(logged).toMatch(/misconfigured/i);
+    expect(logged).toMatch(/32-character string/i);
+    expect(logged).toContain("openssl rand -base64 32");
+    expect(logged).toMatch(/44 characters/);
+    expect(logged.split("\n").length).toBeGreaterThan(5); // genuinely multi-line, not a one-liner
+    // Never leaks the malformed KEK value itself.
+    expect(logged).not.toContain(process.env.MEAL_PLAN_KEK as string);
+  });
+
+  test("never calls process.exit for either absent or malformed — meal planning fails alone, the app does not go down", () => {
+    const originalExit = process.exit;
+    const exitSpy = mock(() => {
+      throw new Error("process.exit must never be called from boot KEK validation");
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    process.exit = exitSpy as any;
+    try {
+      delete process.env.MEAL_PLAN_KEK;
+      expect(() => logMealPlanKekBootStatus()).not.toThrow();
+
+      process.env.MEAL_PLAN_KEK = "a".repeat(32);
+      expect(() => logMealPlanKekBootStatus()).not.toThrow();
+
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      process.exit = originalExit;
+    }
   });
 });
 

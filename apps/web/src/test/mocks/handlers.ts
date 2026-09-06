@@ -363,7 +363,12 @@ export const handlers = [
         dietaryRestrictions: [],
         weekStartDay: 1,
         timezone: "America/New_York",
-        envDefaults: { provider: "openai", model: "gpt-4o-mini", visionModel: "gpt-4o-mini" },
+        envDefaults: {
+          provider: "openai",
+          model: "gpt-4o-mini",
+          visionModel: "gpt-4o-mini",
+          unsupportedProvider: null,
+        },
       },
     });
   }),
@@ -396,7 +401,12 @@ export const handlers = [
         dietaryRestrictions: body.dietaryRestrictions ?? [],
         weekStartDay: body.weekStartDay ?? 1,
         timezone: body.timezone ?? "America/New_York",
-        envDefaults: { provider: "openai", model: "gpt-4o-mini", visionModel: "gpt-4o-mini" },
+        envDefaults: {
+          provider: "openai",
+          model: "gpt-4o-mini",
+          visionModel: "gpt-4o-mini",
+          unsupportedProvider: null,
+        },
       },
     });
   }),

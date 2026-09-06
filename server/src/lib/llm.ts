@@ -198,16 +198,33 @@ const HOUSEHOLD_DEFAULT_MODELS: Readonly<Record<HouseholdLLMProvider, string>> =
 };
 
 /**
- * The container-wide default provider, from `LLM_PROVIDER`. Only recognizes the three
- * providers meal planning supports (`HouseholdLLMProvider`) — `groq`/`ollama` are valid
- * for getModel()'s receipt-parsing path but have no meal-planning equivalent, so an
- * operator running receipts on groq does not get an (incorrect) meal-planning
- * fallback out of it.
+ * Trims and lowercases `LLM_PROVIDER` for matching. Without this, an operator-typed
+ * value like `OpenAI` or `OPENAI ` (both otherwise perfectly valid) fails a strict
+ * `===` against the literal `"openai"`, silently resolving to "no default" — the
+ * Settings form then seeds empty and Save is blocked by a client guard, with nothing
+ * in the UI or logs explaining why. Returns null for unset/blank, distinct from a
+ * value that's set but unrecognized (callers below tell those apart).
+ */
+function normalizeEnvProviderRaw(): string | null {
+  const raw = process.env.LLM_PROVIDER;
+  if (!raw) return null;
+  const trimmed = raw.trim().toLowerCase();
+  return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * The container-wide default provider, from `LLM_PROVIDER` (trimmed/lowercased, see
+ * `normalizeEnvProviderRaw`). Only recognizes the three providers meal planning
+ * supports (`HouseholdLLMProvider`) — `groq`/`ollama` are valid for getModel()'s
+ * receipt-parsing path but have no meal-planning equivalent, so an operator running
+ * receipts on groq does not get an (incorrect) meal-planning fallback out of it.
  */
 function resolveEnvProvider(): HouseholdLLMProvider | null {
-  const raw = process.env.LLM_PROVIDER;
-  if (!raw) return "openai"; // matches getModel()'s own unset-default
-  return raw === "openai" || raw === "anthropic" || raw === "openrouter" ? raw : null;
+  const normalized = normalizeEnvProviderRaw();
+  if (normalized === null) return "openai"; // unset/blank matches getModel()'s own default
+  return normalized === "openai" || normalized === "anthropic" || normalized === "openrouter"
+    ? (normalized as HouseholdLLMProvider)
+    : null;
 }
 
 export interface LLMConfigPreview {
@@ -219,6 +236,16 @@ export interface LLMConfigPreview {
 export interface LLMEnvDefaults {
   provider: HouseholdLLMProvider | null;
   model: string | null;
+  /**
+   * The raw (trimmed/lowercased) `LLM_PROVIDER` value when it's set to something meal
+   * planning doesn't support (`groq`, `ollama`, or a typo) — null in every other case,
+   * including when `LLM_PROVIDER` is unset. Lets the API/UI distinguish "operator
+   * hasn't configured a default" (both `provider`/`model` null, this also null) from
+   * "operator configured something, but it doesn't work here" (this non-null), so the
+   * Settings form can explain instead of silently presenting an empty, unseeded form
+   * that looks identical to the first case.
+   */
+  unsupportedProvider: string | null;
 }
 
 /**
@@ -228,14 +255,16 @@ export interface LLMEnvDefaults {
  * that has never opened Settings should see the operator's chosen provider/model as
  * pre-filled UI defaults even before any container-wide key exists — the household may
  * bring its own key for that provider (plan §5.6, "UI defaults come from container env
- * config"). Returns `{provider: null, model: null}` when `LLM_PROVIDER` is set to a
- * value meal planning doesn't support (`groq`/`ollama`/anything else).
+ * config"). Returns `{provider: null, model: null, unsupportedProvider: <raw value>}`
+ * when `LLM_PROVIDER` is set to a value meal planning doesn't support.
  */
 export function resolveEnvDefaults(): LLMEnvDefaults {
   const provider = resolveEnvProvider();
-  if (!provider) return { provider: null, model: null };
+  if (!provider) {
+    return { provider: null, model: null, unsupportedProvider: normalizeEnvProviderRaw() };
+  }
   const model = process.env.LLM_MODEL ?? HOUSEHOLD_DEFAULT_MODELS[provider];
-  return { provider, model };
+  return { provider, model, unsupportedProvider: null };
 }
 
 /**

@@ -7,6 +7,7 @@ import { auth, createUserHousehold, joinHouseholdByCode } from "./lib/auth";
 import { rateLimitMiddleware } from "./middleware/ratelimit";
 import { client, db } from "./lib/db";
 import { runMigrations } from "./lib/migrate";
+import { logMealPlanKekBootStatus } from "./lib/crypto";
 import { households as householdsTable } from "./db/schema";
 import { eq } from "drizzle-orm";
 
@@ -231,6 +232,13 @@ try {
   console.error("✗ Migration failed:", err);
   process.exit(1);
 }
+
+// Validate MEAL_PLAN_KEK before accepting requests (self-diagnosing operator
+// misconfiguration — see logMealPlanKekBootStatus's doc comment for the incident this
+// fixes). Unlike the migration check above, this deliberately never calls
+// process.exit: meal planning is one feature among several (inventory, barcode,
+// receipts), and a bad/missing KEK must fail only that feature, not the whole app.
+logMealPlanKekBootStatus();
 
 // Crash sweep (plan §4.1): a single Bun process means in-flight generation jobs die
 // with the process, with no queue to resume them. Any `generating_*` meal plan whose

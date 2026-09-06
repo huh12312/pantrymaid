@@ -342,21 +342,35 @@ household invite code instead.
 ## Troubleshooting
 
 <details>
-<summary><strong>"Server is not configured to store API keys" when saving a key</strong></summary>
+<summary><strong>"Server is not configured to store API keys" / "misconfigured" when saving a key</strong></summary>
 
-`MEAL_PLAN_KEK` is missing or the wrong length. Logs will show
-`MEAL_PLAN_KEK is not set. Refusing to encrypt/decrypt secrets` or
-`must decode to exactly 32 bytes (got N)`.
+`MEAL_PLAN_KEK` is either **not set at all** or **set but the wrong length** — these are two
+different problems with two different fixes, and the API response now tells you which one you
+have (older versions returned the same generic message for both):
+
+- *"MEAL_PLAN_KEK is not set"* → the variable is simply missing from `.env`.
+- *"MEAL_PLAN_KEK is set but invalid"* → it's present but doesn't decode to exactly 32 bytes.
+  This is almost always the classic mistake: pasting a **32-CHARACTER** string (e.g. from a
+  password generator) instead of the **44-CHARACTER** output of `openssl rand -base64 32`
+  (44 base64 characters decode to exactly 32 bytes; 32 characters decode to only 24). If you
+  "fixed" a missing key and are still stuck, count the characters — this is very likely why.
+
+The server also checks this **at boot**, not just on first save — look for either a one-line
+`MEAL_PLAN_KEK is not set` INFO log (benign — per-household keys are just disabled) or a loud,
+boxed `MEAL_PLAN_KEK IS MISCONFIGURED` error block naming the exact byte count, right after the
+`Running database migrations` line. Neither one crashes the server: inventory, barcode, and
+receipts all work regardless of this key's state.
 
 ```bash
-openssl rand -base64 32          # add to .env as MEAL_PLAN_KEK
+openssl rand -base64 32          # copy the FULL, UNMODIFIED output — add to .env as MEAL_PLAN_KEK
 docker compose up -d --force-recreate api
 ```
 
 `docker compose restart` is **not** enough — it reuses the old environment. Don't copy the
-placeholder from `.env.example`; it decodes to 6 bytes and will fail the same way.
+placeholder from `.env.example`; it's deliberately invalid and will fail the same way.
 
-Verify: `docker compose exec api sh -c 'echo ${MEAL_PLAN_KEK:+SET}'`
+Verify: `docker compose exec api sh -c 'echo ${MEAL_PLAN_KEK:+SET}'`, and check
+`docker compose logs api | grep -i MEAL_PLAN_KEK` for the boot-time diagnosis above.
 </details>
 
 <details>

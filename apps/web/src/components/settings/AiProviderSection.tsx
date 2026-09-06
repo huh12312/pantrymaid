@@ -168,6 +168,13 @@ export function AiProviderSection() {
   // generation would actually use, rather than a blank Select and an empty Model
   // field (plan §5.6 problem 2). Once the household saves its own values, THOSE win
   // here unconditionally; envDefaults is purely a first-run seed.
+  //
+  // `envDefaults.provider`/`model` are ALSO null when the operator's LLM_PROVIDER is
+  // set to something meal planning doesn't support (groq/ollama/a typo) — in that case
+  // there is nothing sane to seed with, so the form stays blank on purpose and
+  // `envDefaults.unsupportedProvider` (surfaced below, near the Provider select) tells
+  // the household why, instead of an unexplained empty form that looks identical to
+  // "operator never configured anything".
   useEffect(() => {
     if (!data || seeded.current) return;
     seeded.current = true;
@@ -201,6 +208,16 @@ export function AiProviderSection() {
   // "intentionally defaulted", not "broken/unconfigured" (unlike `model` above, this
   // value is never written INTO the input itself).
   const visionModelFallback = data?.envDefaults?.visionModel ?? null;
+
+  // Honesty over a silent fallback: when this household has never chosen its own
+  // provider AND the operator's container-wide LLM_PROVIDER is set to something meal
+  // planning doesn't support (groq/ollama/a typo), envDefaults.provider/model come
+  // back null with nothing to seed the form with. Rather than render an unexplained
+  // blank Select that looks identical to "operator configured nothing at all",
+  // surface exactly what's misconfigured — the operator's raw value — so a household
+  // isn't left guessing why the form didn't pre-fill.
+  const envUnsupportedProvider =
+    data && !data.provider ? (data.envDefaults?.unsupportedProvider ?? null) : null;
 
   const saveMutation = useMutation({
     mutationFn: (input: UpdateLlmSettingsInput) => api.updateLlmSettings(input),
@@ -337,6 +354,15 @@ export function AiProviderSection() {
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <h3 className="font-semibold text-sm">Provider &amp; API key</h3>
+
+      {envUnsupportedProvider && (
+        <p role="status" className="text-sm text-muted-foreground">
+          This container&apos;s LLM_PROVIDER is set to &quot;{envUnsupportedProvider}&quot;, which
+          isn&apos;t supported for meal planning (only OpenAI, Anthropic, and OpenRouter are — that
+          setting is still fine for receipt scanning). Choose a provider below to enable meal
+          planning for this household.
+        </p>
+      )}
 
       <div className="space-y-1.5">
         <Label htmlFor="llm-provider">Provider</Label>

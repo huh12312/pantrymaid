@@ -401,6 +401,96 @@ describe("Settings API Routes", () => {
   });
 
   // ---------------------------------------------------------------------------------
+  // MEAL_PLAN_KEK misconfiguration (operator error) — the incident this fixes: the API
+  // used to map BOTH "not set at all" and "set but the wrong length" to one identical
+  // 500 ("Server is not configured to store API keys"), so an operator who "fixed" a
+  // missing KEK by setting a malformed one hit the exact same wall and had no way to
+  // tell from the response that anything had changed. The real reason lived only in
+  // the server log. These tests exercise the actual route handlers (not just
+  // crypto.ts) to confirm the two states now produce distinguishable API responses,
+  // and that neither the submitted API key nor the KEK value itself ever leaks into
+  // the response.
+  // ---------------------------------------------------------------------------------
+  describe("PUT/GET /settings/llm — MEAL_PLAN_KEK misconfiguration is distinguishable (absent vs malformed)", () => {
+    const ORIGINAL_KEK = process.env.MEAL_PLAN_KEK;
+
+    afterEach(() => {
+      if (ORIGINAL_KEK === undefined) delete process.env.MEAL_PLAN_KEK;
+      else process.env.MEAL_PLAN_KEK = ORIGINAL_KEK;
+    });
+
+    it("PUT with an apiKey when MEAL_PLAN_KEK is absent -> 500, message says the key isn't set, never leaks the submitted key", async () => {
+      delete process.env.MEAL_PLAN_KEK;
+      const res = await putLlm({
+        provider: "openai",
+        model: "gpt-4o-mini",
+        apiKey: "sk-should-never-leak-absent",
+      });
+      expect(res.status).toBe(500);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/not set/i);
+      expect(json.error).not.toContain("sk-should-never-leak-absent");
+    });
+
+    it("PUT with an apiKey when MEAL_PLAN_KEK is malformed (the classic 32-character-string mistake) -> 500, message says the config is invalid, never leaks the submitted key or the KEK", async () => {
+      // Exactly the incident: a 32-CHARACTER string used as if it were the 44-character
+      // base64 output of `openssl rand -base64 32` — it decodes to 24 bytes, not 32.
+      process.env.MEAL_PLAN_KEK = "a".repeat(32);
+      const res = await putLlm({
+        provider: "openai",
+        model: "gpt-4o-mini",
+        apiKey: "sk-should-never-leak-malformed",
+      });
+      expect(res.status).toBe(500);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/invalid/i);
+      expect(json.error).not.toContain("sk-should-never-leak-malformed");
+      expect(json.error).not.toContain(process.env.MEAL_PLAN_KEK as string);
+    });
+
+    it("the absent and malformed messages are distinguishable from each other — no longer the same generic 500", async () => {
+      delete process.env.MEAL_PLAN_KEK;
+      const absentRes = await putLlm({
+        provider: "openai",
+        model: "gpt-4o-mini",
+        apiKey: "sk-absent-case",
+      });
+      const absentJson = await absentRes.json();
+
+      process.env.MEAL_PLAN_KEK = "a".repeat(32);
+      const malformedRes = await putLlm({
+        provider: "openai",
+        model: "gpt-4o-mini",
+        apiKey: "sk-malformed-case",
+      });
+      const malformedJson = await malformedRes.json();
+
+      expect(absentRes.status).toBe(500);
+      expect(malformedRes.status).toBe(500);
+      expect(absentJson.error).not.toBe(malformedJson.error);
+    });
+
+    it("GET /settings/llm/models decrypting a previously-saved household key when MEAL_PLAN_KEK has since gone malformed -> 500 distinguishing 'invalid config', not a silent decrypt failure", async () => {
+      // Save a real key first, while the KEK (from the root .env used by `bun
+      // --env-file=../.env test`) is still valid.
+      await putLlm({ provider: "openai", model: "gpt-4o-mini", apiKey: "sk-real-stored-key" });
+
+      process.env.MEAL_PLAN_KEK = "a".repeat(32);
+      const res = await app.request("/settings/llm/models?provider=openai", {
+        method: "GET",
+        headers: { Cookie: sessionCookie },
+      });
+      expect(res.status).toBe(500);
+      const json = await res.json();
+      expect(json.success).toBe(false);
+      expect(json.error).toMatch(/invalid/i);
+      expect(json.error).not.toContain(process.env.MEAL_PLAN_KEK as string);
+    });
+  });
+
+  // ---------------------------------------------------------------------------------
   // PUT/GET /settings/llm — visionModel: a per-household override for the receipt-OCR
   // vision model id, following the exact same null-vs-undefined precedent as apiKey
   // (omitted = no change, explicit null = clear back to env/default). See
@@ -665,6 +755,7 @@ describe("Settings API Routes", () => {
         provider: "openai",
         model: "gpt-4o-mini",
         visionModel: "gpt-5.4-mini",
+        unsupportedProvider: null,
       });
     });
 
@@ -676,6 +767,7 @@ describe("Settings API Routes", () => {
           provider: "anthropic",
           model: "claude-haiku-4-5-20251001",
           visionModel: "claude-sonnet-4-6",
+          unsupportedProvider: null,
         });
       } finally {
         delete process.env.LLM_PROVIDER;
@@ -691,6 +783,7 @@ describe("Settings API Routes", () => {
           provider: "anthropic",
           model: "claude-sonnet-4-6",
           visionModel: "claude-sonnet-4-6",
+          unsupportedProvider: null,
         });
       } finally {
         delete process.env.LLM_PROVIDER;
@@ -698,11 +791,49 @@ describe("Settings API Routes", () => {
       }
     });
 
-    it("is null/null/null for a provider meal planning doesn't support (e.g. groq)", async () => {
+    it("is null/null for a provider meal planning doesn't support (e.g. groq), with unsupportedProvider naming it", async () => {
       process.env.LLM_PROVIDER = "groq";
       try {
         const json = await getLlm();
-        expect(json.data.envDefaults).toEqual({ provider: null, model: null, visionModel: null });
+        expect(json.data.envDefaults).toEqual({
+          provider: null,
+          model: null,
+          visionModel: null,
+          unsupportedProvider: "groq",
+        });
+      } finally {
+        delete process.env.LLM_PROVIDER;
+      }
+    });
+
+    it("LLM_PROVIDER normalization: mixed case and surrounding whitespace still resolve (OpenAI, ' openai ', OPENAI)", async () => {
+      for (const raw of ["OpenAI", " openai ", "OPENAI"]) {
+        process.env.LLM_PROVIDER = raw;
+        try {
+          const json = await getLlm();
+          expect(json.data.envDefaults.provider).toBe("openai");
+          expect(json.data.envDefaults.unsupportedProvider).toBeNull();
+        } finally {
+          delete process.env.LLM_PROVIDER;
+        }
+      }
+    });
+
+    it("LLM_PROVIDER normalization does not rescue a truly unsupported/typo'd value", async () => {
+      process.env.LLM_PROVIDER = "Groq"; // real provider, still unsupported for meal planning
+      try {
+        const json = await getLlm();
+        expect(json.data.envDefaults.provider).toBeNull();
+        expect(json.data.envDefaults.unsupportedProvider).toBe("groq");
+      } finally {
+        delete process.env.LLM_PROVIDER;
+      }
+
+      process.env.LLM_PROVIDER = "  Opennai  "; // typo, not just case/whitespace
+      try {
+        const json = await getLlm();
+        expect(json.data.envDefaults.provider).toBeNull();
+        expect(json.data.envDefaults.unsupportedProvider).toBe("opennai");
       } finally {
         delete process.env.LLM_PROVIDER;
       }

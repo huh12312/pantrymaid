@@ -380,6 +380,79 @@ describe("AiProviderSection", () => {
     expect(screen.getByRole("combobox", { name: /provider/i })).toHaveTextContent(/anthropic/i);
   });
 
+  // -------------------------------------------------------------------------------
+  // envDefaults.unsupportedProvider (item 4): when the operator's container-wide
+  // LLM_PROVIDER is set to something meal planning doesn't support (groq/ollama/a
+  // typo), envDefaults.provider/model come back null with nothing to seed the form
+  // with — same top-level shape as "operator never configured anything". Rather than
+  // render an unexplained blank form in both cases, the API also returns
+  // `unsupportedProvider` naming the operator's actual value, and the form must
+  // explain instead of silently misrepresenting the config as "nothing set".
+  // -------------------------------------------------------------------------------
+  it("explains an unsupported operator provider (envDefaults.unsupportedProvider) instead of silently rendering an empty form", async () => {
+    server.use(
+      http.get(`${API_BASE}/api/settings/llm`, () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            provider: null,
+            model: null,
+            keyConfigured: false,
+            keyLast4: null,
+            defaultServings: 2,
+            allergies: [],
+            dietaryRestrictions: [],
+            weekStartDay: 1,
+            timezone: "America/New_York",
+            envDefaults: { provider: null, model: null, unsupportedProvider: "groq" },
+          },
+        })
+      )
+    );
+
+    renderSection();
+    await screen.findByRole("combobox", { name: /provider/i });
+    const notice = await screen.findByRole("status");
+    expect(notice.textContent).toMatch(/groq/i);
+    expect(notice.textContent).toMatch(/isn.t supported for meal planning/i);
+    // The form itself must still be genuinely empty — never a misreported default.
+    expect(screen.getByRole("combobox", { name: /provider/i })).toHaveTextContent(
+      /choose a provider/i
+    );
+  });
+
+  it("shows no unsupported-provider notice when the household already has its own saved provider, even if envDefaults.unsupportedProvider is set (stale/irrelevant once the household has configured itself)", async () => {
+    server.use(
+      http.get(`${API_BASE}/api/settings/llm`, () =>
+        HttpResponse.json({
+          success: true,
+          data: {
+            provider: "anthropic",
+            model: "claude-haiku-4-5-20251001",
+            keyConfigured: true,
+            keyLast4: "7f2c",
+            defaultServings: 2,
+            allergies: [],
+            dietaryRestrictions: [],
+            weekStartDay: 1,
+            timezone: "America/New_York",
+            envDefaults: { provider: null, model: null, unsupportedProvider: "ollama" },
+          },
+        })
+      )
+    );
+
+    renderSection();
+    await waitForLoaded("claude-haiku-4-5-20251001");
+    expect(screen.queryByText(/ollama/i)).not.toBeInTheDocument();
+  });
+
+  it("shows no unsupported-provider notice in the ordinary first-run case (unsupportedProvider null)", async () => {
+    renderSection();
+    await waitForLoaded();
+    expect(screen.queryByText(/isn't supported for meal planning/i)).not.toBeInTheDocument();
+  });
+
   it("degrades silently to free-text entry when the model list fetch fails — no blocking error", async () => {
     server.use(
       http.get(`${API_BASE}/api/settings/llm/models`, () =>

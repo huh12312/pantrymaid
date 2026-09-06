@@ -6,7 +6,7 @@
  * instead of re-implementing it (see server/src/lib/llm.ts).
  */
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
-import { resolveLLMConfigPreview, resolveLLMCredentials } from "../../lib/llm";
+import { resolveLLMConfigPreview, resolveLLMCredentials, resolveEnvDefaults } from "../../lib/llm";
 import { encryptSecret, SecretDecryptionError, type EncryptedSecret } from "../../lib/crypto";
 
 const HOUSEHOLD_ID = "11111111-1111-1111-1111-111111111111";
@@ -271,6 +271,69 @@ describe("resolveLLMCredentials — full resolution including real key material"
         source: "household",
       },
     });
+  });
+});
+
+describe("LLM_PROVIDER normalization (trim + lowercase before matching)", () => {
+  // Bug this fixes: resolveEnvProvider() used a strict `===` against three literals,
+  // so an operator-typed `LLM_PROVIDER=OpenAI` (wrong case only — otherwise perfectly
+  // valid) silently resolved to "no default", leaving the Settings form seeded empty
+  // and unsavable (a client guard blocks Save with no provider chosen), with nothing
+  // explaining why. Reproduced directly: `LLM_PROVIDER=OpenAI` used to yield
+  // `envDefaults {provider: null, model: null}`.
+  test.each(["openai", "OpenAI", "OPENAI", " openai ", "\topenai\n"])(
+    "LLM_PROVIDER=%p resolves to provider 'openai', not null",
+    (raw) => {
+      process.env.LLM_PROVIDER = raw;
+      const result = resolveEnvDefaults();
+      expect(result.provider).toBe("openai");
+      expect(result.unsupportedProvider).toBeNull();
+    }
+  );
+
+  test.each(["anthropic", "Anthropic", "ANTHROPIC", " anthropic "])(
+    "LLM_PROVIDER=%p resolves to provider 'anthropic'",
+    (raw) => {
+      process.env.LLM_PROVIDER = raw;
+      const result = resolveEnvDefaults();
+      expect(result.provider).toBe("anthropic");
+    }
+  );
+
+  test("mixed-case/whitespace normalization does NOT rescue a genuinely unsupported provider (groq) — still null, with unsupportedProvider naming it", () => {
+    process.env.LLM_PROVIDER = "Groq";
+    const result = resolveEnvDefaults();
+    expect(result.provider).toBeNull();
+    expect(result.model).toBeNull();
+    expect(result.unsupportedProvider).toBe("groq");
+  });
+
+  test("normalization does NOT rescue ollama either", () => {
+    process.env.LLM_PROVIDER = " OLLAMA ";
+    const result = resolveEnvDefaults();
+    expect(result.provider).toBeNull();
+    expect(result.unsupportedProvider).toBe("ollama");
+  });
+
+  test("a genuine typo still resolves to null, with unsupportedProvider echoing the normalized typo", () => {
+    process.env.LLM_PROVIDER = "opennai";
+    const result = resolveEnvDefaults();
+    expect(result.provider).toBeNull();
+    expect(result.unsupportedProvider).toBe("opennai");
+  });
+
+  test("unset LLM_PROVIDER still defaults to openai with unsupportedProvider null (unchanged behavior)", () => {
+    delete process.env.LLM_PROVIDER;
+    const result = resolveEnvDefaults();
+    expect(result.provider).toBe("openai");
+    expect(result.unsupportedProvider).toBeNull();
+  });
+
+  test("whitespace-only LLM_PROVIDER is treated like unset, not like an unsupported value", () => {
+    process.env.LLM_PROVIDER = "   ";
+    const result = resolveEnvDefaults();
+    expect(result.provider).toBe("openai");
+    expect(result.unsupportedProvider).toBeNull();
   });
 });
 

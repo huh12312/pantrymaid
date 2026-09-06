@@ -300,6 +300,14 @@ export const llmSettingsSchema = z.object({
     // per-provider default map) if the household never configures its own
     // `visionModel`. Never carries key material, same as `model` above.
     visionModel: z.string().nullable(),
+    // Set when the operator's LLM_PROVIDER is configured to a value meal planning
+    // doesn't support (`groq`, `ollama`, or a typo) — distinguishes "operator hasn't
+    // configured a default" (provider/model both null, this also null) from "operator
+    // configured something, but it doesn't work here" (this non-null), so the
+    // Settings form can explain instead of silently rendering an empty, unseeded form
+    // that looks identical to the first case. Never null when `provider` is null AND
+    // `LLM_PROVIDER` was actually set to something.
+    unsupportedProvider: z.string().nullable(),
   }),
 });
 

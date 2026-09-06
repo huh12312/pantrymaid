@@ -1,4 +1,4 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { APICallError } from "ai";
@@ -273,6 +273,29 @@ async function fetchProviderModels(
   return { models: extractModelIds(provider, body), reason: null };
 }
 
+// `KekConfigError.reason` (crypto.ts) distinguishes "MEAL_PLAN_KEK not set at all"
+// from "set but the wrong length" — these used to collapse into one identical 500
+// ("Server is not configured to store API keys"), which is exactly what turned a
+// single missing-env-var mistake into hours of back-and-forth: an operator who set a
+// MALFORMED key hit the same generic wall as one who'd set nothing at all, with the
+// real reason visible only in a server log that's awkward to reach from some
+// deployment targets. This is the operator's own container configuration, not user
+// data — but the message stays factual and short, and NEVER echoes the KEK value, any
+// part of it, or the byte count (that detail stays server-log-only, printed by
+// crypto.ts's decodeBase64Kek).
+function respondKekConfigError(c: Context, error: KekConfigError) {
+  console.error(`MEAL_PLAN_KEK misconfigured (${error.reason}):`, error.message);
+  const message =
+    error.reason === "absent"
+      ? "Server is not configured to store per-household API keys (MEAL_PLAN_KEK is not set). " +
+        "This is an operator configuration issue, not something you can fix here — ask your " +
+        "administrator to set MEAL_PLAN_KEK."
+      : "Server's per-household API key storage is misconfigured (MEAL_PLAN_KEK is set but " +
+        "invalid). This is an operator configuration issue — ask your administrator to check " +
+        "the server log for the exact problem.";
+  return c.json({ success: false, error: message }, 500);
+}
+
 const settings = new Hono();
 settings.use("*", authMiddleware);
 
@@ -362,8 +385,7 @@ settings.get(
       return c.json({ success: true, data: { provider, ...result } });
     } catch (error) {
       if (error instanceof KekConfigError) {
-        console.error("MEAL_PLAN_KEK misconfigured:", error.message);
-        return c.json({ success: false, error: "Server is not configured to store API keys" }, 500);
+        return respondKekConfigError(c, error);
       }
       console.error("Error fetching LLM model catalogue:", error);
       return c.json({ success: false, error: "Failed to fetch model list" }, 500);
@@ -468,8 +490,7 @@ settings.put("/llm", zValidator("json", updateLlmSettingsSchema), async (c) => {
     return c.json({ success: true, data: serializeLlmSettings(saved) });
   } catch (error) {
     if (error instanceof KekConfigError) {
-      console.error("MEAL_PLAN_KEK misconfigured:", error.message);
-      return c.json({ success: false, error: "Server is not configured to store API keys" }, 500);
+      return respondKekConfigError(c, error);
     }
     console.error("Error updating LLM settings:", error);
     return c.json({ success: false, error: "Failed to update LLM settings" }, 500);
@@ -588,8 +609,7 @@ settings.post("/llm/test", zValidator("json", testLlmSettingsSchema), async (c) 
     }
   } catch (error) {
     if (error instanceof KekConfigError) {
-      console.error("MEAL_PLAN_KEK misconfigured:", error.message);
-      return c.json({ success: false, error: "Server is not configured to store API keys" }, 500);
+      return respondKekConfigError(c, error);
     }
     console.error("Error testing LLM settings:", error);
     return c.json({ success: false, error: "Failed to test LLM settings" }, 500);
