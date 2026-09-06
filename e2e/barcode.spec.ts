@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { registerAs } from "./helpers";
+import { registerAs, revealManualBarcodeEntry } from "./helpers";
 import { TEST_USER, BARCODE_MOCK } from "./fixtures";
 
 test.describe("Barcode Scanning Flow", () => {
@@ -87,6 +87,9 @@ test.describe("Barcode Scanning Flow", () => {
       await page.click('button:has-text("Scan")');
       await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5000 });
 
+      // Manual entry is collapsed behind a reveal control until the user asks
+      // for it (camera-first, no surprise keyboard) — open it before filling.
+      await revealManualBarcodeEntry(page);
       await page.fill("input#manual-barcode", BARCODE_MOCK.upc);
       await page.click('button[type="submit"]');
 
@@ -114,6 +117,7 @@ test.describe("Barcode Scanning Flow", () => {
       await page.click('button:has-text("Scan")');
       await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5000 });
 
+      await revealManualBarcodeEntry(page);
       await page.fill("input#manual-barcode", "9999999999999");
       await page.click('button[type="submit"]');
 
@@ -152,6 +156,7 @@ test.describe("Barcode Scanning Flow", () => {
       await page.click('button:has-text("Scan")');
       await expect(page.locator('[role="dialog"]')).toBeVisible({ timeout: 5000 });
 
+      await revealManualBarcodeEntry(page);
       await page.fill("input#manual-barcode", BARCODE_MOCK.upc);
       await page.click('button[type="submit"]');
 

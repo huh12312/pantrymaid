@@ -37,6 +37,18 @@ export function BarcodeScanner({ open, onOpenChange, onScan }: BarcodeScannerPro
   const [scanning, setScanning] = useState(false);
   const [manualBarcode, setManualBarcode] = useState("");
 
+  // Manual entry starts collapsed so opening the scanner shows the camera
+  // view without popping the on-screen keyboard. It reveals automatically
+  // (but is never auto-focused) when the camera is unavailable, since that's
+  // the only way to proceed in that case.
+  const [manualEntryOpen, setManualEntryOpen] = useState(false);
+  const manualInputRef = useRef<HTMLInputElement>(null);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  // Set right before revealing manual entry via the user-initiated control so
+  // the focus effect below only fires focus for that path, not the
+  // camera-error auto-reveal.
+  const focusManualOnRevealRef = useRef(false);
+
   // Camera controls — only shown when the device supports them
   const [hasTorch, setHasTorch] = useState(false);
   const [torchEnabled, setTorchEnabled] = useState(false);
@@ -83,8 +95,33 @@ export function BarcodeScanner({ open, onOpenChange, onScan }: BarcodeScannerPro
       stopCamera();
       setCameraError(null);
       setManualBarcode("");
+      setManualEntryOpen(false);
     }
   }, [open, stopCamera]);
+
+  // Camera unavailable/errored → manual entry is the only way to proceed, so
+  // reveal it automatically. Do NOT focus it: a surprise keyboard is exactly
+  // the complaint this fix addresses.
+  useEffect(() => {
+    if (cameraError) {
+      setManualEntryOpen(true);
+    }
+  }, [cameraError]);
+
+  // Focus the manual-entry input only when the user explicitly asked for it
+  // via the reveal control (see focusManualOnRevealRef above) — not when it
+  // was auto-revealed by a camera error.
+  useEffect(() => {
+    if (manualEntryOpen && focusManualOnRevealRef.current) {
+      focusManualOnRevealRef.current = false;
+      manualInputRef.current?.focus();
+    }
+  }, [manualEntryOpen]);
+
+  const handleRevealManualEntry = () => {
+    focusManualOnRevealRef.current = true;
+    setManualEntryOpen(true);
+  };
 
   useEffect(() => {
     if (!open || !videoEl) return;
@@ -208,9 +245,21 @@ export function BarcodeScanner({ open, onOpenChange, onScan }: BarcodeScannerPro
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" showHandle>
+      <SheetContent
+        side="bottom"
+        showHandle
+        onOpenAutoFocus={(e) => {
+          // Radix auto-focuses the first tabbable element on open, which is
+          // the manual-entry input — popping the keyboard over the camera.
+          // Prevent that default, then move focus to the (non-input) heading
+          // instead so the dialog is still announced to screen readers and
+          // focus stays trapped inside the sheet.
+          e.preventDefault();
+          titleRef.current?.focus();
+        }}
+      >
         <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+          <SheetTitle ref={titleRef} tabIndex={-1} className="flex items-center gap-2">
             <Camera className="h-5 w-5" />
             Scan Barcode
           </SheetTitle>
@@ -283,29 +332,49 @@ export function BarcodeScanner({ open, onOpenChange, onScan }: BarcodeScannerPro
             {scanning ? "Scanning — point camera at a barcode" : "Camera not available"}
           </p>
 
-          {/* Manual entry */}
+          {/* Manual entry — collapsed by default so opening the scanner shows
+              the camera, not the keyboard. Revealed automatically when the
+              camera errors out, or on demand via the button below. */}
           <div className="border-t pt-4">
-            <form onSubmit={handleManualSubmit} className="space-y-2">
-              <Label htmlFor="manual-barcode">Enter barcode manually</Label>
-              <div className="flex gap-2">
-                <Input
-                  id="manual-barcode"
-                  placeholder="e.g. 0038000845260"
-                  value={manualBarcode}
-                  onChange={(e) => setManualBarcode(e.target.value)}
-                  inputMode="numeric"
-                  className="h-11 sm:h-10"
-                />
-                <Button
-                  type="submit"
-                  size="icon"
-                  className="h-11 w-11 sm:h-10 sm:w-10"
-                  disabled={!manualBarcode.trim()}
-                >
-                  <Search className="h-4 w-4" />
-                </Button>
-              </div>
-            </form>
+            {!manualEntryOpen && (
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full h-11 sm:h-10"
+                aria-expanded={manualEntryOpen}
+                aria-controls="manual-barcode-region"
+                onClick={handleRevealManualEntry}
+              >
+                <Search className="h-4 w-4 mr-2" />
+                Enter barcode manually
+              </Button>
+            )}
+            <div id="manual-barcode-region">
+              {manualEntryOpen && (
+                <form onSubmit={handleManualSubmit} className="space-y-2">
+                  <Label htmlFor="manual-barcode">Enter barcode manually</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="manual-barcode"
+                      ref={manualInputRef}
+                      placeholder="e.g. 0038000845260"
+                      value={manualBarcode}
+                      onChange={(e) => setManualBarcode(e.target.value)}
+                      inputMode="numeric"
+                      className="h-11 sm:h-10"
+                    />
+                    <Button
+                      type="submit"
+                      size="icon"
+                      className="h-11 w-11 sm:h-10 sm:w-10"
+                      disabled={!manualBarcode.trim()}
+                    >
+                      <Search className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </form>
+              )}
+            </div>
           </div>
 
           <Button

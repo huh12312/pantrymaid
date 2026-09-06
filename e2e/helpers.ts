@@ -116,3 +116,30 @@ export async function registerAs(page: Page, user: User) {
 
   await page.waitForURL("/inventory");
 }
+
+/**
+ * Reveals the collapsed manual-barcode-entry input inside the open
+ * BarcodeScanner sheet.
+ *
+ * Manual entry starts collapsed behind a "Enter barcode manually" button
+ * (camera-first, no surprise keyboard) and only reveals via that click — OR
+ * automatically, without the button, if the camera errors out. Headless CI
+ * has no real camera, so `getUserMedia` reliably rejects and the component
+ * auto-reveals shortly after the sheet opens. That creates a race against a
+ * plain `page.click('button:has-text("Enter barcode manually")')`: if the
+ * auto-reveal fires while Playwright's click is still resolving the
+ * selector, the button gets unmounted mid-action and the click hangs until
+ * its own timeout. Racing the click against waiting for the input directly
+ * — and swallowing a click failure — lets either path win.
+ */
+export async function revealManualBarcodeEntry(page: Page) {
+  const input = page.locator("input#manual-barcode");
+  const revealButton = page.getByRole("button", { name: "Enter barcode manually" });
+  await Promise.race([
+    input.waitFor({ state: "visible", timeout: 8000 }),
+    revealButton.click({ timeout: 8000 }).catch(() => {
+      /* button may already be gone because the camera-error path auto-revealed it */
+    }),
+  ]);
+  await input.waitFor({ state: "visible", timeout: 5000 });
+}

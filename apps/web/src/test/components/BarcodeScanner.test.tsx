@@ -1,5 +1,6 @@
 import { describe, test, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 /**
  * Shared, per-test-mutable handles for the mocked @zxing/browser reader and
@@ -145,6 +146,50 @@ describe("BarcodeScanner — continuous autofocus", () => {
     // Camera-unavailable fallback must NOT appear; live scanning text stays.
     expect(screen.queryByText(/camera unavailable/i)).not.toBeInTheDocument();
     expect(screen.getByText(/scanning — point camera at a barcode/i)).toBeInTheDocument();
+  });
+});
+
+describe("BarcodeScanner — manual entry disclosure (keyboard-over-camera fix)", () => {
+  it("does not render or focus the manual-entry input on open — camera view comes up first", async () => {
+    renderScanner();
+
+    await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+
+    expect(document.getElementById("manual-barcode")).not.toBeInTheDocument();
+    const revealButton = screen.getByRole("button", { name: /enter barcode manually/i });
+    expect(revealButton).toBeInTheDocument();
+    expect(revealButton).toHaveAttribute("aria-expanded", "false");
+    expect(revealButton).toHaveAttribute("aria-controls", "manual-barcode-region");
+    expect(document.activeElement).not.toBe(document.getElementById("manual-barcode"));
+  });
+
+  it("reveals and focuses the manual-entry input when the reveal control is clicked", async () => {
+    const user = userEvent.setup();
+    renderScanner();
+
+    await waitFor(() => expect(getUserMediaMock).toHaveBeenCalled());
+
+    const revealButton = screen.getByRole("button", { name: /enter barcode manually/i });
+    await user.click(revealButton);
+
+    const input = screen.getByLabelText(/enter barcode manually/i);
+    expect(input).toBeInTheDocument();
+    expect(input).toHaveAttribute("id", "manual-barcode");
+    await waitFor(() => expect(input).toHaveFocus());
+    expect(
+      screen.queryByRole("button", { name: /^enter barcode manually$/i })
+    ).not.toBeInTheDocument();
+  });
+
+  it("auto-reveals manual entry when the camera errors out, without focusing it", async () => {
+    getUserMediaMock.mockRejectedValue(new Error("Permission denied"));
+    renderScanner();
+
+    await screen.findByText(/camera unavailable/i);
+
+    const input = screen.getByLabelText(/enter barcode manually/i);
+    expect(input).toBeInTheDocument();
+    expect(document.activeElement).not.toBe(input);
   });
 });
 
